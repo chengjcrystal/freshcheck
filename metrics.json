@@ -1,0 +1,25 @@
+{
+  "architecture": "TinyFreshNet (3 conv blocks + global average pool + linear head)",
+  "params": 23938,
+  "img_size": 64,
+  "classes": [
+    "fresh",
+    "rotten"
+  ],
+  "device": "mps",
+  "dataset": {
+    "train_images": 434,
+    "val_images": 76,
+    "source": "nikibout/fresh-and-rotten-fruit (Hugging Face)"
+  },
+  "accuracy": {
+    "train": 0.9954,
+    "val": 1.0
+  },
+  "layers": [
+    "Conv(3\u219216) + BN + ReLU + MaxPool",
+    "Conv(16\u219232) + BN + ReLU + MaxPool",
+    "Conv(32\u219264) + BN + ReLU + MaxPool",
+    "AdaptiveAvgPool \u2192 Dropout(0.3) \u2192 Linear(64\u21922)"
+  ]
+}
