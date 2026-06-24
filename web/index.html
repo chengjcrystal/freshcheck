@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FreshCheck — On-device fruit freshness detection</title>
+  <meta name="description" content="A privacy-first computer-vision model that tells you whether fruit is fresh or spoiled. Runs on-device, real-time inference, confidence scoring." />
+
+  <!-- Tailwind (Play CDN) + config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+            mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+          },
+          colors: {
+            brand: {
+              50:"#ecfdf5",100:"#d1fae5",200:"#a7f3d0",300:"#6ee7b7",
+              400:"#34d399",500:"#10b981",600:"#059669",700:"#047857",
+              800:"#065f46",900:"#064e3b",
+            },
+          },
+          keyframes: {
+            shimmer: { "100%": { transform: "translateX(100%)" } },
+            float: { "0%,100%": { transform:"translateY(0)" }, "50%": { transform:"translateY(-8px)" } },
+          },
+          animation: { float: "float 6s ease-in-out infinite" },
+        },
+      },
+    };
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root { color-scheme: light dark; }
+    body { -webkit-font-smoothing: antialiased; }
+    .glass { backdrop-filter: blur(14px); }
+    .grad-text { background: linear-gradient(100deg,#10b981,#0ea5e9 60%,#6366f1);
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+    .grid-bg {
+      background-image:
+        radial-gradient(60% 60% at 50% 0%, rgba(16,185,129,.14), transparent 70%),
+        linear-gradient(to right, rgba(100,116,139,.10) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(100,116,139,.10) 1px, transparent 1px);
+      background-size: 100% 100%, 38px 38px, 38px 38px;
+    }
+    .dark .grid-bg {
+      background-image:
+        radial-gradient(60% 60% at 50% 0%, rgba(16,185,129,.18), transparent 70%),
+        linear-gradient(to right, rgba(148,163,184,.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148,163,184,.08) 1px, transparent 1px);
+    }
+    .skeleton { position:relative; overflow:hidden; }
+    .skeleton::after { content:""; position:absolute; inset:0;
+      transform:translateX(-100%);
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
+      animation: shimmer 1.4s infinite; }
+    .dark .skeleton::after { background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:rgba(100,116,139,.35); border-radius:9999px; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.3.1",
+      "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?external=react",
+      "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?external=react",
+      "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+      "framer-motion": "https://esm.sh/framer-motion@11.11.0?external=react,react-dom"
+    }
+  }
+  </script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+</head>
+<body class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased transition-colors">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module" data-presets="react">
+    import React, { useState, useEffect, useRef, useCallback } from "react";
+    import { createRoot } from "react-dom/client";
+    import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+
+    /* ------------------------------------------------------------------ data */
+    const TRUST = [
+      ["🔒", "Privacy-first", "Images never leave the request"],
+      ["⚡", "Real-time", "Single forward pass"],
+      ["📡", "No cloud upload", "Inference on the host device"],
+      ["🎯", "Confidence scoring", "Calibrated softmax output"],
+    ];
+    const PIPELINE = [
+      ["Ingest", "PIL decode + RGB normalize", "Pillow"],
+      ["Preprocess", "Resize 64², ImageNet norm", "torchvision"],
+      ["Inference", "TinyFreshNet forward pass", "PyTorch"],
+      ["Postprocess", "Softmax → top-k probs", "PyTorch"],
+      ["Serve", "FastAPI JSON over HTTP", "FastAPI"],
+    ];
+    const STACK = [
+      ["PyTorch", "Model + training loop"],
+      ["torchvision", "Transforms & ImageFolder"],
+      ["FastAPI", "Inference API"],
+      ["Uvicorn", "ASGI server"],
+      ["React 18", "SPA frontend"],
+      ["Tailwind CSS", "Design system"],
+      ["Framer Motion", "Microinteractions"],
+      ["Hugging Face", "Dataset source"],
+    ];
+    const FAQ = [
+      ["Does my photo get uploaded to the cloud?",
+       "No. The image is sent to a local inference endpoint running on the same host as the UI and is held only in memory for the duration of the request. Nothing is persisted or sent to a third party."],
+      ["How big is the model?",
+       "TinyFreshNet has ~24k trainable parameters — three small convolutional blocks feeding a global-average-pooled linear head. It's intentionally compact so it trains in minutes on CPU and runs in real time."],
+      ["Why is validation accuracy so high?",
+       "The current weights are trained on a focused banana fresh/rotten dataset (434 train / 76 val images). The score is honest for that distribution but not a claim of general accuracy across every fruit — the architecture and pipeline are the transferable parts."],
+      ["Can it handle other fruits?",
+       "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, and the same UI surfaces the new model's metrics automatically from /api/meta."],
+      ["How is latency measured?",
+       "The server times the transform + forward pass with perf_counter around the prediction and returns it per request. The model is warmed up at startup so the first request is representative."],
+    ];
+
+    /* --------------------------------------------------------------- helpers */
+    const pct = (x) => `${(x * 100).toFixed(1)}%`;
+    const bytes = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(2)} MB`;
+    const cls = (...a) => a.filter(Boolean).join(" ");
+    const isRotten = (c) => /rotten|bad|spoil/i.test(c);
+
+    async function predictFile(file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/predict", { method: "POST", body: fd });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      return res.json();
+    }
+
+    /* ------------------------------------------------------------ primitives */
+    const reveal = {
+      initial: { opacity: 0, y: 24 },
+      whileInView: { opacity: 1, y: 0 },
+      viewport: { once: true, margin: "-80px" },
+      transition: { duration: .5, ease: "easeOut" },
+    };
+
+    function Section({ id, eyebrow, title, lead, children }) {
+      return (
+        <section id={id} className="max-w-6xl mx-auto px-5 py-20 scroll-mt-20">
+          {(eyebrow || title) && (
+            <motion.div {...reveal} className="text-center mb-12">
+              {eyebrow && <div className="text-brand-600 dark:text-brand-400 font-semibold tracking-wide uppercase text-xs mb-3">{eyebrow}</div>}
+              {title && <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">{title}</h2>}
+              {lead && <p className="mt-3 text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">{lead}</p>}
+            </motion.div>
+          )}
+          {children}
+        </section>
+      );
+    }
+
+    function Card({ className, children }) {
+      return <div className={cls("rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 glass", className)}>{children}</div>;
+    }
+
+    function Chip({ children, tone = "slate" }) {
+      const tones = {
+        slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+        brand: "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-500/10 dark:text-brand-300 dark:border-brand-500/30",
+      };
+      return <span className={cls("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold", tones[tone])}>{children}</span>;
+    }
+
+    /* --------------------------------------------------------------- nav bar */
+    function Nav({ dark, setDark }) {
+      const links = [["analyze","Analyze"],["model","Model insights"],["tech","Engineering"],["benchmarks","Benchmarks"],["faq","FAQ"]];
+      return (
+        <header className="sticky top-0 z-40 border-b border-slate-200/70 dark:border-slate-800/70 bg-white/75 dark:bg-slate-950/70 glass">
+          <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+            <a href="#top" className="flex items-center gap-2.5 font-extrabold text-lg">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-lg shadow-brand-500/30">🍃</span>
+              FreshCheck
+            </a>
+            <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600 dark:text-slate-300">
+              {links.map(([h,l]) => <a key={h} href={`#${h}`} className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">{l}</a>)}
+            </nav>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setDark(d => !d)} aria-label="Toggle dark mode"
+                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                {dark ? "☀️" : "🌙"}
+              </button>
+              <a href="#analyze" className="hidden sm:inline-flex rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold px-4 py-2 transition-colors shadow-lg shadow-brand-600/25">Try it</a>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    /* ----------------------------------------------------------------- hero */
+    function Hero({ meta }) {
+      const stats = [
+        ["Validation accuracy", meta ? pct(meta.accuracy.val) : "—"],
+        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "—"],
+        ["Inference", meta ? `on ${meta.inference_device?.toUpperCase()}` : "real-time"],
+      ];
+      return (
+        <div id="top" className="grid-bg border-b border-slate-200/60 dark:border-slate-800/60">
+          <div className="max-w-6xl mx-auto px-5 pt-20 pb-16 text-center">
+            <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} transition={{duration:.5}}>
+              <Chip tone="brand">● Live computer-vision demo</Chip>
+            </motion.div>
+            <motion.h1 initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.05}}
+              className="mt-6 text-4xl sm:text-6xl font-black tracking-tight leading-[1.05]">
+              Know if your fruit is<br className="hidden sm:block"/> still <span className="grad-text">fresh</span> — instantly.
+            </motion.h1>
+            <motion.p initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.12}}
+              className="mt-5 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+              A compact convolutional network classifies fruit as fresh or spoiled from a single photo —
+              with confidence scoring, sub-second inference, and zero cloud uploads.
+            </motion.p>
+            <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.18}}
+              className="mt-7 flex flex-wrap justify-center gap-2">
+              {TRUST.map(([i,t]) => <Chip key={t}>{i} {t}</Chip>)}
+            </motion.div>
+            <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.24}}
+              className="mt-9 flex flex-wrap justify-center gap-3">
+              <a href="#analyze" className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold px-6 py-3 shadow-xl shadow-brand-600/30 transition-colors">Analyze a photo →</a>
+              <a href="#model" className="rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold px-6 py-3 transition-colors">View model insights</a>
+            </motion.div>
+
+            <motion.div initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.6,delay:.3}}
+              className="mt-14 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+              {stats.map(([l,v]) => (
+                <Card key={l} className="py-5 px-3">
+                  <div className="text-2xl sm:text-3xl font-extrabold grad-text font-mono">{v}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">{l}</div>
+                </Card>
+              ))}
+            </motion.div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ------------------------------------------------------------ viz pieces */
+    function Gauge({ value, label }) {
+      const r = 52, c = 2 * Math.PI * r;
+      const rotten = isRotten(label);
+      const color = rotten ? "#ef4444" : "#10b981";
+      return (
+        <div className="relative w-36 h-36">
+          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+            <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" className="stroke-slate-200 dark:stroke-slate-800" />
+            <motion.circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round"
+              stroke={color} strokeDasharray={c}
+              initial={{ strokeDashoffset: c }}
+              animate={{ strokeDashoffset: c * (1 - value) }}
+              transition={{ duration: 1, ease: "easeOut" }} />
+          </svg>
+          <div className="absolute inset-0 grid place-items-center">
+            <div className="text-center">
+              <div className="text-3xl font-extrabold font-mono">{pct(value)}</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">confidence</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProbBars({ probs }) {
+      return (
+        <div className="space-y-3">
+          {probs.map((p, i) => {
+            const rotten = isRotten(p.label);
+            return (
+              <div key={p.label}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="font-semibold capitalize">{p.label}</span>
+                  <span className="font-mono text-slate-500 dark:text-slate-400">{pct(p.prob)}</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <motion.div className={cls("h-full rounded-full", rotten ? "bg-red-500" : "bg-brand-500")}
+                    initial={{ width: 0 }} animate={{ width: pct(p.prob) }}
+                    transition={{ duration: .8, delay: .15 + i*.1, ease: "easeOut" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    function Metric({ label, value, mono = true }) {
+      return (
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
+          <div className={cls("text-sm font-semibold mt-0.5", mono && "font-mono")}>{value}</div>
+        </div>
+      );
+    }
+
+    /* ----------------------------------------------------------- result view */
+    function ResultDashboard({ result, preview }) {
+      const rotten = isRotten(result.predicted_class);
+      const rec = rotten
+        ? "Discard this item. Visible decay markers detected — consuming spoiled fruit carries a health risk."
+        : "Safe to eat. No significant decay signal detected. Store cool and dry to maximize shelf life.";
+      const explanation = rotten
+        ? "The network's activations concentrated on dark, low-saturation surface regions consistent with bruising and rot."
+        : "Surface color and texture distribution matched the model's learned profile for ripe, undamaged fruit.";
+      const report = JSON.stringify(result, null, 2);
+
+      const copy = () => navigator.clipboard?.writeText(report);
+      const download = () => {
+        const blob = new Blob([
+          `FreshCheck Analysis Report\n===========================\n\n` +
+          `Prediction : ${result.predicted_class.toUpperCase()}\n` +
+          `Confidence : ${pct(result.confidence)}\n` +
+          `Latency    : ${result.latency_ms} ms (${result.device})\n` +
+          `Image      : ${result.image.width}×${result.image.height}, ${bytes(result.image.bytes)}\n\n` +
+          `Class probabilities:\n` +
+          result.probabilities.map(p => `  ${p.label.padEnd(8)} ${pct(p.prob)}`).join("\n") +
+          `\n\nRecommendation:\n  ${rec}\n\nRaw JSON:\n${report}\n`
+        ], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = "freshcheck-report.txt"; a.click();
+      };
+      const share = () => {
+        const min = { c: result.predicted_class, p: +result.confidence.toFixed(4), t: result.latency_ms };
+        const hash = "r=" + btoa(JSON.stringify(min));
+        const url = `${location.origin}${location.pathname}#${hash}`;
+        navigator.clipboard?.writeText(url);
+        history.replaceState(null, "", "#" + hash);
+      };
+
+      return (
+        <motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .4 }} className="space-y-5">
+          <div className={cls("rounded-2xl p-5 border flex items-center gap-5",
+            rotten ? "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30"
+                   : "bg-brand-50 border-brand-200 dark:bg-brand-500/10 dark:border-brand-500/30")}>
+            <div className={cls("w-14 h-14 grid place-items-center rounded-2xl text-3xl shrink-0",
+              rotten ? "bg-red-100 dark:bg-red-500/20" : "bg-brand-100 dark:bg-brand-500/20")}>
+              {rotten ? "⚠️" : "✓"}
+            </div>
+            <div>
+              <div className={cls("text-2xl font-extrabold", rotten ? "text-red-700 dark:text-red-400" : "text-brand-700 dark:text-brand-400")}>
+                {rotten ? "Spoiled" : "Fresh"}
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-300">{pct(result.confidence)} confidence · {result.latency_ms} ms inference</div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-5 items-center">
+            <div className="flex justify-center"><Gauge value={result.confidence} label={result.predicted_class} /></div>
+            <div><div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Class probabilities</div><ProbBars probs={result.probabilities} /></div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Metric label="Latency" value={`${result.latency_ms} ms`} />
+            <Metric label="Device" value={result.device.toUpperCase()} />
+            <Metric label="Dimensions" value={`${result.image.width}×${result.image.height}`} />
+            <Metric label="File size" value={bytes(result.image.bytes)} />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Card className="p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Recommendation</div>
+              <p className="text-sm text-slate-700 dark:text-slate-300">{rec}</p>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Model explanation</div>
+              <p className="text-sm text-slate-700 dark:text-slate-300">{explanation}</p>
+            </Card>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {[["Copy JSON",copy],["Download report",download],["Share link",share]].map(([t,fn]) => (
+              <button key={t} onClick={fn}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold px-3.5 py-2 transition-colors">{t}</button>
+            ))}
+          </div>
+        </motion.div>
+      );
+    }
+
+    function Skeleton() {
+      return (
+        <div className="space-y-5">
+          <div className="skeleton h-24 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+          <div className="grid sm:grid-cols-2 gap-5">
+            <div className="skeleton h-36 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+            <div className="space-y-3">
+              <div className="skeleton h-8 rounded-lg bg-slate-100 dark:bg-slate-800" />
+              <div className="skeleton h-8 rounded-lg bg-slate-100 dark:bg-slate-800" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-3">{[0,1,2,3].map(i => <div key={i} className="skeleton h-14 rounded-xl bg-slate-100 dark:bg-slate-800" />)}</div>
+        </div>
+      );
+    }
+
+    /* -------------------------------------------------------------- analyzer */
+    function CameraModal({ onClose, onCapture }) {
+      const videoRef = useRef(null);
+      const [err, setErr] = useState(null);
+      useEffect(() => {
+        let stream;
+        navigator.mediaDevices?.getUserMedia({ video: { facingMode: "environment" } })
+          .then(s => { stream = s; if (videoRef.current) videoRef.current.srcObject = s; })
+          .catch(() => setErr("Camera access was denied or is unavailable."));
+        return () => stream?.getTracks().forEach(t => t.stop());
+      }, []);
+      const snap = () => {
+        const v = videoRef.current; if (!v) return;
+        const cv = document.createElement("canvas");
+        cv.width = v.videoWidth; cv.height = v.videoHeight;
+        cv.getContext("2d").drawImage(v, 0, 0);
+        cv.toBlob(b => { onCapture(new File([b], "camera.jpg", { type: "image/jpeg" })); onClose(); }, "image/jpeg", .92);
+      };
+      return (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 max-w-lg w-full" onClick={e => e.stopPropagation()}>
+            {err ? <p className="text-red-500 text-sm py-8 text-center">{err}</p>
+              : <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl bg-black aspect-video object-cover" />}
+            <div className="flex gap-2 mt-3">
+              <button onClick={snap} disabled={!!err} className="flex-1 rounded-lg bg-brand-600 disabled:opacity-40 hover:bg-brand-500 text-white font-semibold py-2.5 transition-colors">Capture</button>
+              <button onClick={onClose} className="rounded-lg border border-slate-300 dark:border-slate-700 px-4 font-semibold">Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Analyzer({ pushHistory }) {
+      const [preview, setPreview] = useState(null);
+      const [result, setResult] = useState(null);
+      const [batch, setBatch] = useState(null);
+      const [status, setStatus] = useState("idle"); // idle | loading | error
+      const [error, setError] = useState(null);
+      const [drag, setDrag] = useState(false);
+      const [camera, setCamera] = useState(false);
+      const [examples, setExamples] = useState([]);
+      const inputRef = useRef(null);
+
+      useEffect(() => { fetch("/api/examples").then(r => r.ok ? r.json() : []).then(setExamples).catch(() => {}); }, []);
+
+      const runSingle = useCallback(async (file) => {
+        setBatch(null); setStatus("loading"); setError(null);
+        setPreview(URL.createObjectURL(file));
+        try {
+          const r = await predictFile(file);
+          setResult(r); setStatus("idle"); pushHistory(r);
+        } catch (e) { setError(e.message); setStatus("error"); }
+      }, [pushHistory]);
+
+      const runBatch = useCallback(async (files) => {
+        setResult(null); setPreview(null); setStatus("loading"); setError(null);
+        const out = [];
+        for (const f of files) {
+          try { const r = await predictFile(f); out.push({ ...r, _url: URL.createObjectURL(f) }); pushHistory(r); }
+          catch (e) { out.push({ error: e.message, image: { filename: f.name } }); }
+          setBatch([...out]);
+        }
+        setStatus("idle");
+      }, [pushHistory]);
+
+      const handleFiles = useCallback((files) => {
+        const arr = [...files].filter(f => f.type.startsWith("image/"));
+        if (!arr.length) return;
+        arr.length === 1 ? runSingle(arr[0]) : runBatch(arr);
+      }, [runSingle, runBatch]);
+
+      const loadExample = async (url) => {
+        const blob = await (await fetch(url)).blob();
+        runSingle(new File([blob], url.split("/").pop(), { type: blob.type || "image/png" }));
+      };
+
+      return (
+        <div className="grid lg:grid-cols-2 gap-6">
+          {camera && <CameraModal onClose={() => setCamera(false)} onCapture={runSingle} />}
+
+          {/* upload */}
+          <Card className="p-5">
+            <div
+              onDragOver={e => { e.preventDefault(); setDrag(true); }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files); }}
+              onClick={() => inputRef.current?.click()}
+              role="button" tabIndex={0}
+              onKeyDown={e => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
+              className={cls("cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors",
+                drag ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10" : "border-slate-300 dark:border-slate-700 hover:border-brand-400")}>
+              {preview && !batch
+                ? <img src={preview} alt="Selected fruit preview" className="mx-auto max-h-56 rounded-lg object-contain" />
+                : <div className="py-6">
+                    <div className="text-4xl mb-3 animate-float">🍎🍌🍊</div>
+                    <div className="font-semibold">Drag &amp; drop a fruit photo</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">or click to browse · multiple files run as a batch</div>
+                  </div>}
+              <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={e => handleFiles(e.target.files)} />
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-4">
+              <button onClick={() => inputRef.current?.click()} className="rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold px-4 py-2 transition-colors">Browse files</button>
+              <button onClick={() => setCamera(true)} className="rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold px-4 py-2 transition-colors">📷 Use camera</button>
+            </div>
+
+            {examples.length > 0 && (
+              <div className="mt-5">
+                <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Example test images</div>
+                <div className="flex gap-2 flex-wrap">
+                  {examples.map(url => (
+                    <button key={url} onClick={() => loadExample(url)} className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:ring-2 ring-brand-400 transition">
+                      <img src={url} alt="example fruit" className="w-16 h-16 object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* results */}
+          <Card className="p-5 min-h-[420px]">
+            <AnimatePresence mode="wait">
+              {status === "loading" && <motion.div key="l" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><div className="text-xs uppercase tracking-wide text-slate-400 mb-4">Running inference…</div><Skeleton /></motion.div>}
+              {status === "error" && (
+                <motion.div key="e" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="grid place-items-center h-full text-center py-12">
+                  <div>
+                    <div className="text-4xl mb-3">⚠️</div>
+                    <div className="font-semibold text-red-600 dark:text-red-400">Analysis failed</div>
+                    <div className="text-sm text-slate-500 mt-1">{error}</div>
+                  </div>
+                </motion.div>
+              )}
+              {status === "idle" && batch && (
+                <motion.div key="b" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Batch results · {batch.length}</div>
+                    <button onClick={() => { const blob = new Blob([JSON.stringify(batch.map(({_url,...r})=>r),null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="batch-results.json"; a.click(); }}
+                      className="text-xs font-semibold text-brand-600 hover:underline">Export JSON</button>
+                  </div>
+                  <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
+                    {batch.map((b,i) => (
+                      <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-2">
+                        {b._url && <img src={b._url} className="w-11 h-11 rounded-lg object-cover" alt="" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate">{b.image?.filename}</div>
+                          {b.error ? <div className="text-xs text-red-500">{b.error}</div>
+                            : <div className="text-xs text-slate-500">{b.latency_ms} ms</div>}
+                        </div>
+                        {!b.error && <Chip tone={isRotten(b.predicted_class) ? "slate" : "brand"}>{isRotten(b.predicted_class) ? "Spoiled" : "Fresh"} · {pct(b.confidence)}</Chip>}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+              {status === "idle" && !batch && result && <motion.div key="r"><ResultDashboard result={result} preview={preview} /></motion.div>}
+              {status === "idle" && !batch && !result && (
+                <motion.div key="empty" className="grid place-items-center h-full text-center py-12 text-slate-400">
+                  <div>
+                    <div className="text-5xl mb-3 opacity-60">🔬</div>
+                    <div className="font-semibold text-slate-500 dark:text-slate-400">Your diagnostics will appear here</div>
+                    <div className="text-sm mt-1">Upload a photo to run the model.</div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Card>
+        </div>
+      );
+    }
+
+    /* --------------------------------------------------------------- history */
+    function History({ items, onPick }) {
+      if (!items.length) return null;
+      return (
+        <Section id="history" eyebrow="Session" title="Prediction history" lead="Every analysis from this session, kept locally in the browser.">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {items.map((r, i) => (
+              <motion.div key={i} {...reveal} transition={{ duration: .4, delay: i*.03 }}>
+                <Card className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold truncate max-w-[160px]">{r.image?.filename || "image"}</div>
+                    <div className="text-xs text-slate-500 font-mono">{r.latency_ms} ms · {r.device}</div>
+                  </div>
+                  <Chip tone={isRotten(r.predicted_class) ? "slate" : "brand"}>{isRotten(r.predicted_class) ? "Spoiled" : "Fresh"} {pct(r.confidence)}</Chip>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+
+    /* --------------------------------------------------------- model insights */
+    function ModelInsights({ meta }) {
+      if (!meta) return null;
+      const cards = [
+        ["Architecture", meta.architecture, "🧠"],
+        ["Parameters", `${meta.params.toLocaleString()}`, "⚙️"],
+        ["Train accuracy", pct(meta.accuracy.train), "📈"],
+        ["Validation accuracy", pct(meta.accuracy.val), "✅"],
+        ["Training images", meta.dataset.train_images.toLocaleString(), "🗂️"],
+        ["Validation images", meta.dataset.val_images.toLocaleString(), "🧪"],
+        ["Inference device", meta.inference_device?.toUpperCase(), "💻"],
+        ["Input size", `${meta.img_size}×${meta.img_size}`, "🖼️"],
+      ];
+      return (
+        <Section id="model" eyebrow="ML dashboard" title="Model insights"
+          lead="Every figure here is measured directly from the trained checkpoint by evaluate.py — nothing is hard-coded.">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {cards.map(([l,v,e]) => (
+              <motion.div key={l} {...reveal}><Card className="p-4">
+                <div className="text-xl">{e}</div>
+                <div className="mt-2 text-lg font-extrabold font-mono break-words">{v}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{l}</div>
+              </Card></motion.div>
+            ))}
+          </div>
+          <motion.div {...reveal} className="mt-6">
+            <Card className="p-6">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-4">Forward pass</div>
+              <div className="flex flex-wrap items-stretch gap-2">
+                {meta.layers.map((layer, i) => (
+                  <React.Fragment key={i}>
+                    <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-mono">{layer}</div>
+                    {i < meta.layers.length - 1 && <div className="self-center text-slate-400">→</div>}
+                  </React.Fragment>
+                ))}
+              </div>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+                Trained on the <span className="font-semibold">{meta.dataset.source}</span> dataset. The compact design keeps the model at
+                ~{(meta.params/1000).toFixed(1)}k parameters so it trains in minutes and runs in real time on CPU.
+              </p>
+            </Card>
+          </motion.div>
+        </Section>
+      );
+    }
+
+    /* ----------------------------------------------------------- engineering */
+    function Engineering() {
+      return (
+        <Section id="tech" eyebrow="Under the hood" title="Engineering &amp; deployment"
+          lead="An end-to-end ML pipeline: data ingestion, preprocessing, training, evaluation, and a served inference API.">
+          <motion.div {...reveal} className="mb-8">
+            <Card className="p-6">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-4">ML pipeline</div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {PIPELINE.map(([s,d,t], i) => (
+                  <div key={s} className="relative rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                    <div className="text-xs font-mono text-brand-600 dark:text-brand-400">0{i+1}</div>
+                    <div className="font-semibold mt-1">{s}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{d}</div>
+                    <div className="mt-2"><Chip>{t}</Chip></div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </motion.div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <motion.div {...reveal}><Card className="p-6">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Tech stack</div>
+              <div className="space-y-2">
+                {STACK.map(([n,d]) => (
+                  <div key={n} className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 last:border-0">
+                    <span className="font-semibold font-mono text-sm">{n}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{d}</span>
+                  </div>
+                ))}
+              </div>
+            </Card></motion.div>
+            <motion.div {...reveal}><Card className="p-6">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Deployment architecture</div>
+              <pre className="text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-300 overflow-auto">{
+`Browser (React SPA)
+   │  multipart/form-data
+   ▼
+FastAPI  /api/predict  ── warm model in memory
+   │
+   ▼
+TinyFreshNet (PyTorch)
+   │  softmax + perf_counter timing
+   ▼
+JSON  { class, confidence, probs, latency }`}</pre>
+              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Single origin — the API also serves the static SPA. The model is loaded once and warmed at startup for representative latency.</p>
+            </Card></motion.div>
+          </div>
+        </Section>
+      );
+    }
+
+    /* ------------------------------------------------------------ benchmarks */
+    function Benchmarks({ meta, lastLatency }) {
+      const rows = meta ? [
+        ["Validation accuracy", pct(meta.accuracy.val)],
+        ["Train accuracy", pct(meta.accuracy.train)],
+        ["Parameters", meta.params.toLocaleString()],
+        ["Training set", `${meta.dataset.train_images} images`],
+        ["Validation set", `${meta.dataset.val_images} images`],
+        ["Measured latency", lastLatency ? `${lastLatency} ms` : "run an analysis"],
+        ["Inference device", meta.inference_device?.toUpperCase()],
+      ] : [];
+      return (
+        <Section id="benchmarks" eyebrow="Numbers" title="Performance benchmarks"
+          lead="Honest, reproducible metrics for the shipped checkpoint and its dataset.">
+          <motion.div {...reveal}>
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {rows.map(([k,v], i) => (
+                    <tr key={k} className={cls(i % 2 && "bg-slate-50 dark:bg-slate-800/40")}>
+                      <td className="px-5 py-3 font-medium text-slate-600 dark:text-slate-300">{k}</td>
+                      <td className="px-5 py-3 text-right font-mono font-semibold">{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          </motion.div>
+        </Section>
+      );
+    }
+
+    /* -------------------------------------------------------------- how + faq */
+    function HowItWorks() {
+      const steps = [
+        ["Upload or capture", "Drag in, browse, or snap a photo. Everything stays on the host."],
+        ["On-device inference", "The image is normalized and passed through TinyFreshNet in a single forward pass."],
+        ["Diagnostics", "Get a fresh/spoiled verdict with confidence, probabilities, latency, and a recommendation."],
+      ];
+      return (
+        <Section id="how" eyebrow="Workflow" title="How it works" lead="Three steps, instant results.">
+          <div className="grid md:grid-cols-3 gap-4">
+            {steps.map(([t,d], i) => (
+              <motion.div key={t} {...reveal} transition={{ duration:.5, delay:i*.08 }}>
+                <Card className="p-6 h-full">
+                  <div className="w-9 h-9 grid place-items-center rounded-lg bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 font-extrabold font-mono">{i+1}</div>
+                  <h3 className="mt-3 font-bold">{t}</h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{d}</p>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+
+    function Privacy() {
+      const items = [
+        ["🔒","No persistence","Uploaded bytes live only in memory for the request and are never written to disk."],
+        ["📡","No third parties","Inference runs against a local endpoint on the same host as the UI."],
+        ["🧾","Transparent output","Every prediction returns its full probability vector and timing — no black box."],
+      ];
+      return (
+        <Section id="privacy" eyebrow="Trust" title="Privacy &amp; security" lead="Designed so the data path is obvious and auditable.">
+          <div className="grid md:grid-cols-3 gap-4">
+            {items.map(([e,t,d]) => (
+              <motion.div key={t} {...reveal}><Card className="p-6 h-full">
+                <div className="text-2xl">{e}</div>
+                <h3 className="mt-3 font-bold">{t}</h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{d}</p>
+              </Card></motion.div>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+
+    function Faq() {
+      const [open, setOpen] = useState(0);
+      return (
+        <Section id="faq" eyebrow="Questions" title="FAQ">
+          <div className="max-w-3xl mx-auto space-y-3">
+            {FAQ.map(([q,a], i) => (
+              <Card key={i} className="overflow-hidden">
+                <button onClick={() => setOpen(open === i ? -1 : i)} className="w-full flex items-center justify-between text-left px-5 py-4 font-semibold">
+                  {q}<span className="text-slate-400 ml-4">{open === i ? "–" : "+"}</span>
+                </button>
+                <AnimatePresence>
+                  {open === i && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: .25 }}>
+                      <p className="px-5 pb-4 text-sm text-slate-600 dark:text-slate-300">{a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Card>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+
+    function SharedBanner({ shared, onClose }) {
+      if (!shared) return null;
+      return (
+        <div className="max-w-6xl mx-auto px-5 pt-4">
+          <Card className="p-4 flex items-center justify-between bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-500/30">
+            <div className="text-sm">🔗 Shared result: <span className="font-bold capitalize">{shared.c}</span> · {pct(shared.p)} confidence · {shared.t} ms</div>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+          </Card>
+        </div>
+      );
+    }
+
+    function Footer() {
+      return (
+        <footer className="border-t border-slate-200 dark:border-slate-800 mt-10">
+          <div className="max-w-6xl mx-auto px-5 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200"><span>🍃</span> FreshCheck</div>
+            <div className="font-mono text-xs">TinyFreshNet · PyTorch · FastAPI · React · Tailwind · Framer Motion</div>
+          </div>
+        </footer>
+      );
+    }
+
+    /* ----------------------------------------------------------------- app */
+    function App() {
+      const [dark, setDark] = useState(() => localStorage.theme ? localStorage.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches);
+      const [meta, setMeta] = useState(null);
+      const [history, setHistory] = useState([]);
+      const [shared, setShared] = useState(null);
+
+      useEffect(() => {
+        document.documentElement.classList.toggle("dark", dark);
+        localStorage.theme = dark ? "dark" : "light";
+      }, [dark]);
+
+      useEffect(() => { fetch("/api/meta").then(r => r.json()).then(setMeta).catch(() => {}); }, []);
+
+      useEffect(() => {
+        if (location.hash.startsWith("#r=")) {
+          try { setShared(JSON.parse(atob(location.hash.slice(3)))); } catch {}
+        }
+      }, []);
+
+      const pushHistory = useCallback((r) => setHistory(h => [r, ...h].slice(0, 12)), []);
+      const lastLatency = history[0]?.latency_ms;
+
+      return (
+        <MotionConfig reducedMotion="user">
+          <Nav dark={dark} setDark={setDark} />
+          <SharedBanner shared={shared} onClose={() => { setShared(null); history.replaceState(null,"",location.pathname); }} />
+          <main>
+            <Hero meta={meta} />
+            <Section id="analyze" eyebrow="Live demo" title="Analyze your fruit"
+              lead="Upload, capture, or pick an example. Inference runs on the host and streams diagnostics back in real time.">
+              <Analyzer pushHistory={pushHistory} />
+            </Section>
+            <History items={history} onPick={() => {}} />
+            <ModelInsights meta={meta} />
+            <Engineering />
+            <Benchmarks meta={meta} lastLatency={lastLatency} />
+            <HowItWorks />
+            <Privacy />
+            <Faq />
+          </main>
+          <Footer />
+        </MotionConfig>
+      );
+    }
+
+    createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
