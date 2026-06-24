@@ -4,8 +4,33 @@ Upload a photo of a fruit and a small fine-tuned AI model tells you whether it's
 **fresh** or has **gone bad**.
 
 The model (`TinyFreshNet`) is a deliberately tiny convolutional neural network
-— around **25,000 trainable parameters** — so it trains in minutes on a laptop
+— around **24,000 trainable parameters** — so it trains in minutes on a laptop
 CPU and runs instantly at inference time.
+
+## Live demo (in-browser, no backend)
+
+The production app is a **static React SPA** that runs the model **entirely in
+your browser** via `onnxruntime-web` (WebAssembly). The model is trained in
+PyTorch, exported to ONNX, and shipped as a static asset — so there's no server,
+no cold starts, and images never leave your device.
+
+```bash
+python export_onnx.py    # writes web/model.onnx + web/meta.json from the checkpoint
+python -m http.server -d web 8000     # preview at http://localhost:8000
+```
+
+### Deploy to Vercel
+
+The `web/` directory is a zero-build static site. To publish:
+
+1. Push this repo to GitHub (already done).
+2. In Vercel: **Add New → Project → Import** this repo.
+3. Set **Root Directory = `web`**, Framework Preset = **Other**, leave the build
+   command empty.
+4. **Deploy.** Every push to `main` auto-redeploys.
+
+(The `server.py` FastAPI backend is still included for local/server use, but the
+deployed demo needs none of it.)
 
 ## Project layout
 
