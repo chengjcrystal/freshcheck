@@ -16,3 +16,7 @@ data/
 
 # Local scratch
 *.log
+
+# onnx external-data files (we inline weights into model.onnx)
+*.onnx.data
+*.onnx_data

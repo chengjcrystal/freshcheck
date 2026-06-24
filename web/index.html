@@ -79,6 +79,8 @@
   }
   </script>
   <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+  <!-- onnxruntime-web: runs the model entirely in the browser (no backend) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 </head>
 <body class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased transition-colors">
   <div id="root"></div>
@@ -90,39 +92,39 @@
 
     /* ------------------------------------------------------------------ data */
     const TRUST = [
-      ["🔒", "Privacy-first", "Images never leave the request"],
+      ["🔒", "Privacy-first", "Images never leave your device"],
       ["⚡", "Real-time", "Single forward pass"],
-      ["📡", "No cloud upload", "Inference on the host device"],
+      ["📡", "No backend", "Runs in your browser (WASM)"],
       ["🎯", "Confidence scoring", "Calibrated softmax output"],
     ];
     const PIPELINE = [
-      ["Ingest", "PIL decode + RGB normalize", "Pillow"],
-      ["Preprocess", "Resize 64², ImageNet norm", "torchvision"],
-      ["Inference", "TinyFreshNet forward pass", "PyTorch"],
-      ["Postprocess", "Softmax → top-k probs", "PyTorch"],
-      ["Serve", "FastAPI JSON over HTTP", "FastAPI"],
+      ["Train", "TinyFreshNet on fruit photos", "PyTorch"],
+      ["Evaluate", "Honest train/val accuracy", "PyTorch"],
+      ["Export", "Self-contained model graph", "ONNX"],
+      ["Deploy", "Static bundle, zero servers", "Vercel"],
+      ["Infer", "WASM forward pass in browser", "onnxruntime-web"],
     ];
     const STACK = [
       ["PyTorch", "Model + training loop"],
       ["torchvision", "Transforms & ImageFolder"],
-      ["FastAPI", "Inference API"],
-      ["Uvicorn", "ASGI server"],
+      ["ONNX", "Portable model export"],
+      ["onnxruntime-web", "In-browser WASM inference"],
       ["React 18", "SPA frontend"],
       ["Tailwind CSS", "Design system"],
       ["Framer Motion", "Microinteractions"],
-      ["Hugging Face", "Dataset source"],
+      ["Vercel", "Static hosting / CI deploy"],
     ];
     const FAQ = [
       ["Does my photo get uploaded to the cloud?",
-       "No. The image is sent to a local inference endpoint running on the same host as the UI and is held only in memory for the duration of the request. Nothing is persisted or sent to a third party."],
+       "No. The image is decoded and analyzed entirely inside your browser via WebAssembly. The pixels never leave your device — there is no server to send them to."],
       ["How big is the model?",
        "TinyFreshNet has ~24k trainable parameters — three small convolutional blocks feeding a global-average-pooled linear head. It's intentionally compact so it trains in minutes on CPU and runs in real time."],
       ["Why is validation accuracy so high?",
        "The current weights are trained on a focused banana fresh/rotten dataset (434 train / 76 val images). The score is honest for that distribution but not a claim of general accuracy across every fruit — the architecture and pipeline are the transferable parts."],
       ["Can it handle other fruits?",
-       "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, and the same UI surfaces the new model's metrics automatically from /api/meta."],
+       "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, re-export to ONNX, and the same UI picks up the new model and its metrics automatically."],
       ["How is latency measured?",
-       "The server times the transform + forward pass with perf_counter around the prediction and returns it per request. The model is warmed up at startup so the first request is representative."],
+       "It's timed client-side with performance.now() around the WebAssembly forward pass, so the number you see is the real on-device inference time in your browser — typically a few milliseconds for this compact model."],
     ];
 
     /* --------------------------------------------------------------- helpers */
@@ -131,12 +133,70 @@
     const cls = (...a) => a.filter(Boolean).join(" ");
     const isRotten = (c) => /rotten|bad|spoil/i.test(c);
 
+    /* ---- in-browser inference (onnxruntime-web), no backend ---- */
+    let CLASSES = ["fresh", "rotten"];
+    const MEAN = [0.485, 0.456, 0.406], STD = [0.229, 0.224, 0.225], SIZE = 64;
+    let _session = null;
+
+    async function getSession() {
+      if (!_session) {
+        if (!window.ort) throw new Error("Inference runtime is still loading — try again in a moment.");
+        window.ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+        _session = await window.ort.InferenceSession.create("model.onnx", { executionProviders: ["wasm"] });
+      }
+      return _session;
+    }
+
+    function preprocess(img) {
+      const c = document.createElement("canvas");
+      c.width = SIZE; c.height = SIZE;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+      const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+      const arr = new Float32Array(3 * SIZE * SIZE);
+      for (let i = 0; i < SIZE * SIZE; i++) {
+        for (let ch = 0; ch < 3; ch++) {
+          arr[ch * SIZE * SIZE + i] = (data[i * 4 + ch] / 255 - MEAN[ch]) / STD[ch];
+        }
+      }
+      return new window.ort.Tensor("float32", arr, [1, 3, SIZE, SIZE]);
+    }
+
     async function predictFile(file) {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/predict", { method: "POST", body: fd });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
-      return res.json();
+      const url = URL.createObjectURL(file);
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error("Could not decode image."));
+        im.src = url;
+      });
+      const sess = await getSession();
+      const t0 = performance.now();
+      const out = await sess.run({ input: preprocess(img) });
+      const logits = Array.from(out.logits.data);
+      const m = Math.max(...logits);
+      const ex = logits.map(v => Math.exp(v - m));
+      const sum = ex.reduce((a, b) => a + b, 0);
+      const latency = performance.now() - t0;
+      URL.revokeObjectURL(url);
+
+      const probabilities = CLASSES
+        .map((label, i) => ({ label, prob: ex[i] / sum }))
+        .sort((a, b) => b.prob - a.prob);
+      return {
+        predicted_class: probabilities[0].label,
+        confidence: probabilities[0].prob,
+        probabilities,
+        latency_ms: Math.round(latency * 10) / 10,
+        device: "browser (wasm)",
+        image: {
+          filename: file.name,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          bytes: file.size,
+          format: (file.type || "image").split("/").pop(),
+        },
+      };
     }
 
     /* ------------------------------------------------------------ primitives */
@@ -204,7 +264,7 @@
       const stats = [
         ["Validation accuracy", meta ? pct(meta.accuracy.val) : "—"],
         ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "—"],
-        ["Inference", meta ? `on ${meta.inference_device?.toUpperCase()}` : "real-time"],
+        ["Inference", "in-browser"],
       ];
       return (
         <div id="top" className="grid-bg border-b border-slate-200/60 dark:border-slate-800/60">
@@ -434,7 +494,7 @@
       );
     }
 
-    function Analyzer({ pushHistory }) {
+    function Analyzer({ pushHistory, examples = [] }) {
       const [preview, setPreview] = useState(null);
       const [result, setResult] = useState(null);
       const [batch, setBatch] = useState(null);
@@ -442,10 +502,7 @@
       const [error, setError] = useState(null);
       const [drag, setDrag] = useState(false);
       const [camera, setCamera] = useState(false);
-      const [examples, setExamples] = useState([]);
       const inputRef = useRef(null);
-
-      useEffect(() => { fetch("/api/examples").then(r => r.ok ? r.json() : []).then(setExamples).catch(() => {}); }, []);
 
       const runSingle = useCallback(async (file) => {
         setBatch(null); setStatus("loading"); setError(null);
@@ -676,17 +733,14 @@
             <motion.div {...reveal}><Card className="p-6">
               <div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Deployment architecture</div>
               <pre className="text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-300 overflow-auto">{
-`Browser (React SPA)
-   │  multipart/form-data
+`Static SPA (Vercel CDN)
+   │  canvas → Float32 tensor [1,3,64,64]
    ▼
-FastAPI  /api/predict  ── warm model in memory
-   │
+onnxruntime-web (WebAssembly)
+   │  TinyFreshNet.onnx · single forward pass
    ▼
-TinyFreshNet (PyTorch)
-   │  softmax + perf_counter timing
-   ▼
-JSON  { class, confidence, probs, latency }`}</pre>
-              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Single origin — the API also serves the static SPA. The model is loaded once and warmed at startup for representative latency.</p>
+softmax → { class, confidence, probs, latency }`}</pre>
+              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully on-device in the browser — so the demo is always up with zero cold starts. (A FastAPI server is also included in the repo for local/server use.)</p>
             </Card></motion.div>
           </div>
         </Section>
@@ -751,9 +805,9 @@ JSON  { class, confidence, probs, latency }`}</pre>
 
     function Privacy() {
       const items = [
-        ["🔒","No persistence","Uploaded bytes live only in memory for the request and are never written to disk."],
-        ["📡","No third parties","Inference runs against a local endpoint on the same host as the UI."],
-        ["🧾","Transparent output","Every prediction returns its full probability vector and timing — no black box."],
+        ["🔒","Never uploaded","Your photo is decoded and analyzed in-browser; the pixels never leave your device."],
+        ["📡","No backend","Inference runs in WebAssembly on your machine — there is no server to send data to."],
+        ["🧾","Transparent output","Every prediction exposes its full probability vector and on-device timing — no black box."],
       ];
       return (
         <Section id="privacy" eyebrow="Trust" title="Privacy &amp; security" lead="Designed so the data path is obvious and auditable.">
@@ -829,7 +883,12 @@ JSON  { class, confidence, probs, latency }`}</pre>
         localStorage.theme = dark ? "dark" : "light";
       }, [dark]);
 
-      useEffect(() => { fetch("/api/meta").then(r => r.json()).then(setMeta).catch(() => {}); }, []);
+      useEffect(() => {
+        fetch("meta.json").then(r => r.json()).then(m => {
+          if (Array.isArray(m.classes)) CLASSES = m.classes;
+          setMeta(m);
+        }).catch(() => {});
+      }, []);
 
       useEffect(() => {
         if (location.hash.startsWith("#r=")) {
@@ -848,7 +907,7 @@ JSON  { class, confidence, probs, latency }`}</pre>
             <Hero meta={meta} />
             <Section id="analyze" eyebrow="Live demo" title="Analyze your fruit"
               lead="Upload, capture, or pick an example. Inference runs on the host and streams diagnostics back in real time.">
-              <Analyzer pushHistory={pushHistory} />
+              <Analyzer pushHistory={pushHistory} examples={meta?.examples || []} />
             </Section>
             <History items={history} onPick={() => {}} />
             <ModelInsights meta={meta} />
