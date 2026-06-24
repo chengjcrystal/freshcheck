@@ -9,7 +9,6 @@ single-page app. One origin, no build step required for the frontend.
 import io
 import json
 import os
-import shutil
 import time
 
 import torch
@@ -46,21 +45,9 @@ def _load_metrics():
 # one-click example tests without exposing the whole dataset directory.
 EXAMPLES_DIR = os.path.join(WEB_DIR, "examples")
 EXAMPLE_URLS = []
-if os.path.isdir(WEB_DIR):
-    os.makedirs(EXAMPLES_DIR, exist_ok=True)
-    for cls in ("fresh", "rotten"):
-        src_dir = os.path.join(HERE, "data", "val", cls)
-        if os.path.isdir(src_dir):
-            for name in sorted(os.listdir(src_dir))[:2]:
-                dst = os.path.join(EXAMPLES_DIR, f"{cls}_{name}")
-                if not os.path.exists(dst):
-                    shutil.copy(os.path.join(src_dir, name), dst)
-                EXAMPLE_URLS.append(f"/examples/{cls}_{name}")
-    # Fallback: if data/ wasn't present (e.g. a fresh clone), use any images
-    # already committed under web/examples.
-    if not EXAMPLE_URLS:
-        EXAMPLE_URLS = [f"/examples/{n}" for n in sorted(os.listdir(EXAMPLES_DIR))
-                        if n.lower().endswith((".png", ".jpg", ".jpeg"))]
+if os.path.isdir(EXAMPLES_DIR):
+    EXAMPLE_URLS = [f"/examples/{n}" for n in sorted(os.listdir(EXAMPLES_DIR))
+                    if n.lower().endswith((".png", ".jpg", ".jpeg"))]
 
 
 @app.get("/api/examples")

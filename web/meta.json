@@ -36,9 +36,8 @@
     ]
   },
   "examples": [
-    "examples/fresh_fresh_0000.png",
-    "examples/fresh_fresh_0001.png",
-    "examples/rotten_rotten_0000.png",
-    "examples/rotten_rotten_0001.png"
+    "examples/fresh.png",
+    "examples/ripe.png",
+    "examples/rotten.png"
   ]
 }

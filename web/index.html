@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FreshCheck — On-device fruit freshness detection</title>
+  <title>FreshCheck · on-device fruit freshness</title>
   <meta name="description" content="A privacy-first computer-vision model that tells you whether fruit is fresh or spoiled. Runs on-device, real-time inference, confidence scoring." />
 
   <!-- Tailwind (Play CDN) + config -->
@@ -116,15 +116,15 @@
     ];
     const FAQ = [
       ["Does my photo get uploaded to the cloud?",
-       "No. The image is decoded and analyzed entirely inside your browser via WebAssembly. The pixels never leave your device — there is no server to send them to."],
+       "No. The image is read and analyzed entirely inside your browser using WebAssembly. The pixels never leave your device, because there's no server to send them to."],
       ["How big is the model?",
-       "TinyFreshNet has ~24k trainable parameters — three small convolutional blocks feeding a global-average-pooled linear head. It's intentionally compact so it trains in minutes on CPU and runs in real time."],
+       "TinyFreshNet has about 24,000 parameters: three small convolutional blocks and a linear layer. It's kept small on purpose, so it trains in a few minutes and runs instantly."],
       ["Why is validation accuracy so high?",
-       "The current weights are trained on a focused banana fresh/rotten dataset (434 train / 76 val images). The score is honest for that distribution but not a claim of general accuracy across every fruit — the architecture and pipeline are the transferable parts."],
+       "The model was trained on a banana fresh/rotten dataset (434 training and 76 validation images). The score is real for bananas, but it isn't a claim about every fruit. The point of the project is the pipeline and how it's deployed, which carry over to bigger datasets."],
       ["Can it handle other fruits?",
        "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, re-export to ONNX, and the same UI picks up the new model and its metrics automatically."],
       ["How is latency measured?",
-       "It's timed client-side with performance.now() around the WebAssembly forward pass, so the number you see is the real on-device inference time in your browser — typically a few milliseconds for this compact model."],
+       "It's timed in the browser with performance.now() around the model's forward pass, so the number you see is the actual time it took on your machine, usually a few milliseconds."],
     ];
 
     /* --------------------------------------------------------------- helpers */
@@ -140,7 +140,7 @@
 
     async function getSession() {
       if (!_session) {
-        if (!window.ort) throw new Error("Inference runtime is still loading — try again in a moment.");
+        if (!window.ort) throw new Error("The model is still loading. Give it a second and try again.");
         window.ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
         _session = await window.ort.InferenceSession.create("model.onnx", { executionProviders: ["wasm"] });
       }
@@ -262,8 +262,8 @@
     /* ----------------------------------------------------------------- hero */
     function Hero({ meta }) {
       const stats = [
-        ["Validation accuracy", meta ? pct(meta.accuracy.val) : "—"],
-        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "—"],
+        ["Validation accuracy", meta ? pct(meta.accuracy.val) : "…"],
+        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "…"],
         ["Inference", "in-browser"],
       ];
       return (
@@ -274,12 +274,12 @@
             </motion.div>
             <motion.h1 initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.05}}
               className="mt-6 text-4xl sm:text-6xl font-black tracking-tight leading-[1.05]">
-              Know if your fruit is<br className="hidden sm:block"/> still <span className="grad-text">fresh</span> — instantly.
+              Know if your fruit is<br className="hidden sm:block"/> still <span className="grad-text">fresh</span>.
             </motion.h1>
             <motion.p initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.12}}
               className="mt-5 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              A compact convolutional network classifies fruit as fresh or spoiled from a single photo —
-              with confidence scoring, sub-second inference, and zero cloud uploads.
+              Upload a photo of a banana and a small neural network tells you whether it's good to eat,
+              along with how sure it is. Everything runs in your browser, so your photo never leaves your device.
             </motion.p>
             <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.18}}
               className="mt-7 flex flex-wrap justify-center gap-2">
@@ -366,11 +366,11 @@
     function ResultDashboard({ result, preview }) {
       const rotten = isRotten(result.predicted_class);
       const rec = rotten
-        ? "Discard this item. Visible decay markers detected — consuming spoiled fruit carries a health risk."
-        : "Safe to eat. No significant decay signal detected. Store cool and dry to maximize shelf life.";
+        ? "Best to toss this one. It has a lot of the dark, bruised coloring the model links to spoiled fruit."
+        : "Looks good to eat. Store it somewhere cool and dry to keep it that way longer.";
       const explanation = rotten
-        ? "The network's activations concentrated on dark, low-saturation surface regions consistent with bruising and rot."
-        : "Surface color and texture distribution matched the model's learned profile for ripe, undamaged fruit.";
+        ? "The model mostly goes on color and texture. A lot of dark, low-saturation surface usually reads as bruising or rot."
+        : "Even color and smooth texture, without much dark spotting, is what the model tends to read as fresh.";
       const report = JSON.stringify(result, null, 2);
 
       const copy = () => navigator.clipboard?.writeText(report);
@@ -667,7 +667,7 @@
       ];
       return (
         <Section id="model" eyebrow="ML dashboard" title="Model insights"
-          lead="Every figure here is measured directly from the trained checkpoint by evaluate.py — nothing is hard-coded.">
+          lead="These numbers come straight from the trained model via evaluate.py, not typed in by hand.">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {cards.map(([l,v,e]) => (
               <motion.div key={l} {...reveal}><Card className="p-4">
@@ -702,7 +702,7 @@
     function Engineering() {
       return (
         <Section id="tech" eyebrow="Under the hood" title="Engineering &amp; deployment"
-          lead="An end-to-end ML pipeline: data ingestion, preprocessing, training, evaluation, and a served inference API.">
+          lead="The whole path from raw photos to a live model: training, evaluation, export, and in-browser inference.">
           <motion.div {...reveal} className="mb-8">
             <Card className="p-6">
               <div className="text-xs uppercase tracking-wide text-slate-400 mb-4">ML pipeline</div>
@@ -740,7 +740,7 @@ onnxruntime-web (WebAssembly)
    │  TinyFreshNet.onnx · single forward pass
    ▼
 softmax → { class, confidence, probs, latency }`}</pre>
-              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully on-device in the browser — so the demo is always up with zero cold starts. (A FastAPI server is also included in the repo for local/server use.)</p>
+              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully in the browser, so the demo is always up with no cold starts. (There's also a FastAPI server in the repo if you'd rather run it on a machine.)</p>
             </Card></motion.div>
           </div>
         </Section>
@@ -760,7 +760,7 @@ softmax → { class, confidence, probs, latency }`}</pre>
       ] : [];
       return (
         <Section id="benchmarks" eyebrow="Numbers" title="Performance benchmarks"
-          lead="Honest, reproducible metrics for the shipped checkpoint and its dataset.">
+          lead="The real numbers for the model that's running, measured from its dataset.">
           <motion.div {...reveal}>
             <Card className="overflow-hidden">
               <table className="w-full text-sm">
@@ -787,7 +787,7 @@ softmax → { class, confidence, probs, latency }`}</pre>
         ["Diagnostics", "Get a fresh/spoiled verdict with confidence, probabilities, latency, and a recommendation."],
       ];
       return (
-        <Section id="how" eyebrow="Workflow" title="How it works" lead="Three steps, instant results.">
+        <Section id="how" eyebrow="Workflow" title="How it works" lead="Three steps, and you get an answer right away.">
           <div className="grid md:grid-cols-3 gap-4">
             {steps.map(([t,d], i) => (
               <motion.div key={t} {...reveal} transition={{ duration:.5, delay:i*.08 }}>
@@ -806,11 +806,11 @@ softmax → { class, confidence, probs, latency }`}</pre>
     function Privacy() {
       const items = [
         ["🔒","Never uploaded","Your photo is decoded and analyzed in-browser; the pixels never leave your device."],
-        ["📡","No backend","Inference runs in WebAssembly on your machine — there is no server to send data to."],
-        ["🧾","Transparent output","Every prediction exposes its full probability vector and on-device timing — no black box."],
+        ["📡","No backend","Inference runs in WebAssembly on your machine, so there's no server to send data to."],
+        ["🧾","Clear output","Every prediction shows its full probability split and timing, so you can see exactly what it decided."],
       ];
       return (
-        <Section id="privacy" eyebrow="Trust" title="Privacy &amp; security" lead="Designed so the data path is obvious and auditable.">
+        <Section id="privacy" eyebrow="Trust" title="Privacy &amp; security" lead="It's easy to see where your photo goes, because it doesn't go anywhere.">
           <div className="grid md:grid-cols-3 gap-4">
             {items.map(([e,t,d]) => (
               <motion.div key={t} {...reveal}><Card className="p-6 h-full">
@@ -832,7 +832,7 @@ softmax → { class, confidence, probs, latency }`}</pre>
             {FAQ.map(([q,a], i) => (
               <Card key={i} className="overflow-hidden">
                 <button onClick={() => setOpen(open === i ? -1 : i)} className="w-full flex items-center justify-between text-left px-5 py-4 font-semibold">
-                  {q}<span className="text-slate-400 ml-4">{open === i ? "–" : "+"}</span>
+                  {q}<span className="text-slate-400 ml-4">{open === i ? "▾" : "▸"}</span>
                 </button>
                 <AnimatePresence>
                   {open === i && (
@@ -906,7 +906,7 @@ softmax → { class, confidence, probs, latency }`}</pre>
           <main>
             <Hero meta={meta} />
             <Section id="analyze" eyebrow="Live demo" title="Analyze your fruit"
-              lead="Upload, capture, or pick an example. Inference runs on the host and streams diagnostics back in real time.">
+              lead="Upload, snap a photo, or pick an example. The model runs in your browser and shows results right away.">
               <Analyzer pushHistory={pushHistory} examples={meta?.examples || []} />
             </Section>
             <History items={history} onPick={() => {}} />
