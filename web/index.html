@@ -1,140 +1,580 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FreshCheck · on-device fruit freshness</title>
-  <meta name="description" content="A privacy-first computer-vision model that tells you whether fruit is fresh or spoiled. Runs on-device, real-time inference, confidence scoring." />
-
-  <!-- Tailwind (Play CDN) + config -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: "class",
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-            mono: ["JetBrains Mono", "ui-monospace", "monospace"],
-          },
-          colors: {
-            brand: {
-              50:"#ecfdf5",100:"#d1fae5",200:"#a7f3d0",300:"#6ee7b7",
-              400:"#34d399",500:"#10b981",600:"#059669",700:"#047857",
-              800:"#065f46",900:"#064e3b",
-            },
-          },
-          keyframes: {
-            shimmer: { "100%": { transform: "translateX(100%)" } },
-            float: { "0%,100%": { transform:"translateY(0)" }, "50%": { transform:"translateY(-8px)" } },
-          },
-          animation: { float: "float 6s ease-in-out infinite" },
-        },
-      },
-    };
-  </script>
+  <title>FreshCheck: is that banana still good?</title>
+  <meta name="description" content="FreshCheck grades a banana as fresh or rotten from one photo, entirely in your browser. No upload, a 24K-parameter CNN, ONNX and WebAssembly." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+  <!-- onnxruntime-web: runs the model entirely in the browser, no backend -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 
   <style>
-    :root { color-scheme: light dark; }
-    body { -webkit-font-smoothing: antialiased; }
-    .glass { backdrop-filter: blur(14px); }
-    .grad-text { background: linear-gradient(100deg,#10b981,#0ea5e9 60%,#6366f1);
-      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-    .grid-bg {
-      background-image:
-        radial-gradient(60% 60% at 50% 0%, rgba(16,185,129,.14), transparent 70%),
-        linear-gradient(to right, rgba(100,116,139,.10) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(100,116,139,.10) 1px, transparent 1px);
-      background-size: 100% 100%, 38px 38px, 38px 38px;
+    /* ---------------------------------------------------------- tokens */
+    :root {
+      --bg: #FBF5E6;
+      --panel: #FFFEF8;
+      --ink: #171610;
+      --muted: #6B6656;
+      --acid: #C6FF00;
+      --acid-deep: #A6D400;
+      --tomato: #FF4E2B;
+      --line: #171610;
+      --shadow: #171610;
+      --radius: 4px;
+      --b: 2.5px;
     }
-    .dark .grid-bg {
-      background-image:
-        radial-gradient(60% 60% at 50% 0%, rgba(16,185,129,.18), transparent 70%),
-        linear-gradient(to right, rgba(148,163,184,.08) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(148,163,184,.08) 1px, transparent 1px);
+    html[data-theme="dark"] {
+      --bg: #141209;
+      --panel: #201D12;
+      --ink: #F5EFDC;
+      --muted: #A39C86;
+      --acid: #C6FF00;
+      --acid-deep: #9ECf00;
+      --tomato: #FF6A4B;
+      --line: #F5EFDC;
+      --shadow: #000000;
     }
-    .skeleton { position:relative; overflow:hidden; }
-    .skeleton::after { content:""; position:absolute; inset:0;
-      transform:translateX(-100%);
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
-      animation: shimmer 1.4s infinite; }
-    .dark .skeleton::after { background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); }
-    ::-webkit-scrollbar { width:10px; height:10px; }
-    ::-webkit-scrollbar-thumb { background:rgba(100,116,139,.35); border-radius:9999px; }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Archivo", system-ui, sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    ::selection { background: var(--acid); color: #171610; }
+
+    h1, h2, h3 { margin: 0; font-weight: 900; line-height: .95; letter-spacing: -.02em; }
+    p { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    .mono { font-family: "Space Mono", ui-monospace, monospace; }
+
+    .wrap { max-width: 1140px; margin: 0 auto; padding: 0 22px; }
+
+    /* ---------------------------------------------------------- shared bits */
+    .stamp {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: "Space Mono", monospace; font-weight: 700;
+      font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+      background: var(--ink); color: var(--bg);
+      padding: 6px 12px; border: var(--b) solid var(--line);
+    }
+    .stamp.green { background: var(--acid); color: #171610; border-color: #171610; }
+    .stamp .hole { width: 8px; height: 8px; border-radius: 50%; background: var(--bg); border: 1.5px solid currentColor; }
+
+    .card {
+      background: var(--panel);
+      border: var(--b) solid var(--line);
+      box-shadow: 5px 5px 0 var(--shadow);
+      border-radius: var(--radius);
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px;
+      font-weight: 800; font-size: 16px;
+      padding: 13px 22px;
+      border: var(--b) solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel); color: var(--ink);
+      box-shadow: 4px 4px 0 var(--shadow);
+      transition: transform .08s ease, box-shadow .08s ease;
+    }
+    .btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--shadow); }
+    .btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--shadow); }
+    .btn.primary { background: var(--acid); color: #171610; border-color: #171610; }
+    .btn.ink { background: var(--ink); color: var(--bg); }
+    .btn.sm { padding: 9px 15px; font-size: 14px; box-shadow: 3px 3px 0 var(--shadow); }
+
+    .eyebrow {
+      font-family: "Space Mono", monospace; font-weight: 700;
+      font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ---------------------------------------------------------- header */
+    header.bar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg);
+      border-bottom: var(--b) solid var(--line);
+    }
+    .bar-in { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+    .logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 900; font-size: 20px; letter-spacing: -.02em; }
+    .logo .mark {
+      display: grid; place-items: center; width: 34px; height: 34px;
+      background: var(--acid); border: var(--b) solid #171610; color: #171610;
+      transform: rotate(-4deg); font-size: 18px;
+    }
+    nav.links { display: flex; gap: 26px; font-weight: 600; font-size: 15px; }
+    nav.links a { position: relative; padding: 2px 0; }
+    nav.links a:hover { box-shadow: inset 0 -8px 0 var(--acid); }
+    .bar-actions { display: flex; align-items: center; gap: 10px; }
+    .toggle {
+      width: 40px; height: 40px; display: grid; place-items: center;
+      background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius);
+      box-shadow: 3px 3px 0 var(--shadow); font-size: 16px;
+      transition: transform .08s, box-shadow .08s;
+    }
+    .toggle:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--shadow); }
+
+    /* ---------------------------------------------------------- hero */
+    .hero { border-bottom: var(--b) solid var(--line); position: relative; overflow: hidden; }
+    .hero-grid {
+      display: grid; grid-template-columns: 1.55fr 1fr; gap: 34px;
+      padding: 60px 0 48px; align-items: start;
+    }
+    .hero h1 { font-size: clamp(48px, 8.5vw, 104px); }
+    .hero h1 .hl { background: var(--acid); box-shadow: 0 0 0 4px var(--acid); padding: 0 .04em; color: #171610; }
+    .hero .lede { margin-top: 26px; font-size: 19px; max-width: 30em; color: var(--ink); }
+    .hero .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 14px; }
+
+    /* accuracy burst sticker */
+    .burst { position: relative; width: 100%; max-width: 300px; margin-left: auto; aspect-ratio: 1; }
+    .burst svg { width: 100%; height: 100%; display: block; filter: drop-shadow(5px 5px 0 var(--shadow)); }
+    .burst .cap { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; transform: rotate(-8deg); }
+    .burst .cap .big { font-size: 46px; font-weight: 900; letter-spacing: -.03em; color: #171610; }
+    .burst .cap .lab { font-family: "Space Mono", monospace; font-weight: 700; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #171610; }
+    .burst .cap .sub { font-family: "Space Mono", monospace; font-size: 10.5px; color: #2c2a12; margin-top: 3px; }
+
+    .stickers { display: flex; flex-wrap: wrap; gap: 12px; padding: 0 0 46px; }
+    .sticker {
+      background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius);
+      box-shadow: 4px 4px 0 var(--shadow); padding: 12px 16px; min-width: 150px;
+    }
+    .sticker .v { font-size: 26px; font-weight: 900; letter-spacing: -.02em; }
+    .sticker .k { font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+    .sticker.pin { position: relative; transform: rotate(-2deg); }
+    .sticker.pin:nth-child(2) { transform: rotate(1.5deg); }
+
+    /* ---------------------------------------------------------- sections */
+    section { border-bottom: var(--b) solid var(--line); }
+    .sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 52px 0 30px; }
+    .sec-head h2 { font-size: clamp(30px, 4.6vw, 52px); }
+    .sec-head .eyebrow { margin-bottom: 12px; display: block; }
+    .sec-head .lead { color: var(--muted); max-width: 40em; margin-top: 12px; font-size: 16px; }
+
+    /* ---------------------------------------------------------- analyzer */
+    .analyze-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 26px; padding-bottom: 56px; }
+    .drop {
+      border: var(--b) dashed var(--line); border-radius: var(--radius);
+      background: var(--panel); padding: 26px; text-align: center;
+      transition: background .1s, transform .1s;
+    }
+    .drop.hot { background: var(--acid); transform: rotate(-.5deg); }
+    .drop .zone { padding: 30px 8px; cursor: pointer; }
+    .drop .fruit { font-size: 46px; letter-spacing: 6px; }
+    .drop .big { font-weight: 900; font-size: 22px; margin-top: 14px; }
+    .drop .small { color: var(--muted); font-size: 14px; margin-top: 6px; }
+    .drop img.prev { max-height: 240px; margin: 0 auto; border: var(--b) solid var(--line); border-radius: var(--radius); }
+    .drop-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .examples { margin-top: 20px; }
+    .examples .lbl { font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .ex-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .ex-row button { padding: 0; border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 3px 3px 0 var(--shadow); background: none; line-height: 0; transition: transform .08s, box-shadow .08s; }
+    .ex-row button:hover { transform: translate(-2px,-2px); box-shadow: 5px 5px 0 var(--shadow); }
+    .ex-row img { width: 62px; height: 62px; object-fit: cover; display: block; }
+
+    .result { min-height: 380px; padding: 22px; }
+    .result .placeholder { display: grid; place-content: center; text-align: center; min-height: 340px; color: var(--muted); }
+    .result .placeholder .scale { font-size: 52px; }
+    .result .placeholder .t { font-weight: 900; font-size: 20px; color: var(--ink); margin-top: 10px; }
+
+    .verdict { display: flex; align-items: center; gap: 16px; border: var(--b) solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .verdict.fresh { background: var(--acid); color: #171610; }
+    .verdict.rotten { background: var(--tomato); color: #fff; }
+    .verdict .tag { font-size: 40px; font-weight: 900; letter-spacing: -.03em; line-height: .9; }
+    .verdict .meta { font-family: "Space Mono", monospace; font-size: 13px; font-weight: 700; }
+
+    .result-mid { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; margin-top: 18px; }
+    .gauge { position: relative; width: 130px; height: 130px; }
+    .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge .num { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .gauge .num b { font-size: 26px; font-weight: 900; }
+    .gauge .num span { font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .bars .row { margin-bottom: 12px; }
+    .bars .row .top { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 5px; }
+    .bars .track { height: 16px; border: 2px solid var(--line); border-radius: 3px; overflow: hidden; background: var(--bg); }
+    .bars .fill { height: 100%; transition: width .7s cubic-bezier(.2,.8,.2,1); }
+    .bars .fill.fresh { background: var(--acid); }
+    .bars .fill.rotten { background: var(--tomato); }
+
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+    .metrics .m { border: 2px solid var(--line); border-radius: 3px; padding: 8px 10px; }
+    .metrics .m .k { font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .metrics .m .v { font-weight: 800; font-size: 15px; margin-top: 2px; }
+    .notes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .notes .n { border: 2px solid var(--line); border-radius: 3px; padding: 12px; }
+    .notes .n .k { font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .notes .n p { font-size: 14px; }
+    .result-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
+
+    .batch .item { display: flex; align-items: center; gap: 12px; border: 2px solid var(--line); border-radius: 3px; padding: 8px; margin-bottom: 8px; }
+    .batch .item img { width: 42px; height: 42px; object-fit: cover; border: 2px solid var(--line); border-radius: 3px; }
+    .batch .item .fn { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pill { font-family: "Space Mono", monospace; font-size: 11px; font-weight: 700; padding: 4px 9px; border: 2px solid var(--line); border-radius: 999px; white-space: nowrap; }
+    .pill.fresh { background: var(--acid); color: #171610; }
+    .pill.rotten { background: var(--tomato); color: #fff; }
+
+    .spinner { text-align: center; padding: 60px 0; }
+    .spinner .load { font-family: "Space Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .spinner .blocks { display: inline-flex; gap: 6px; margin-top: 16px; }
+    .spinner .blocks i { width: 14px; height: 14px; background: var(--acid); border: 2px solid var(--line); animation: pop 1s infinite; }
+    .spinner .blocks i:nth-child(2){ animation-delay: .15s; } .spinner .blocks i:nth-child(3){ animation-delay:.3s; }
+    @keyframes pop { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-8px);} }
+
+    /* ---------------------------------------------------------- insight cards */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding-bottom: 30px; }
+    .ic { background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 5px 5px 0 var(--shadow); padding: 16px; }
+    .ic.span2 { grid-column: span 2; }
+    .ic .k { font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .ic .v { font-weight: 900; font-size: 26px; letter-spacing: -.02em; margin-top: 8px; word-break: break-word; }
+    .ic .v.small { font-size: 16px; font-weight: 800; line-height: 1.25; }
+    .ic .sub { font-family: "Space Mono", monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .ic.hi { background: var(--acid); color: #171610; } .ic.hi .k, .ic.hi .sub { color: #2c2a12; }
+
+    .forward { padding-bottom: 52px; }
+    .forward .layers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .forward .layers .ly { font-family: "Space Mono", monospace; font-size: 12px; border: 2px solid var(--line); border-radius: 3px; padding: 7px 10px; background: var(--bg); }
+    .forward .layers .arw { color: var(--muted); font-weight: 900; }
+    .forward .note { color: var(--muted); font-size: 15px; margin-top: 16px; max-width: 44em; }
+
+    /* ---------------------------------------------------------- engineering */
+    .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding-bottom: 24px; }
+    .step { background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 4px 4px 0 var(--shadow); padding: 14px; }
+    .step .no { font-family: "Space Mono", monospace; font-weight: 700; font-size: 12px; color: var(--acid-deep); }
+    .step .nm { font-weight: 900; font-size: 18px; margin-top: 6px; }
+    .step .ds { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .step .tg { display: inline-block; margin-top: 10px; font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border: 2px solid var(--line); border-radius: 999px; padding: 3px 8px; }
+
+    .eng2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-bottom: 52px; }
+    .stack .srow { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--line); padding: 10px 0; }
+    .stack .srow:last-child { border-bottom: 0; }
+    .stack .srow .nm { font-family: "Space Mono", monospace; font-weight: 700; font-size: 14px; }
+    .stack .srow .ds { color: var(--muted); font-size: 13px; }
+    .diagram pre { font-family: "Space Mono", monospace; font-size: 12.5px; line-height: 1.7; margin: 0; white-space: pre; overflow-x: auto; color: var(--ink); }
+    .diagram .note { color: var(--muted); font-size: 14px; margin-top: 12px; }
+
+    /* ---------------------------------------------------------- receipt */
+    .receipt-wrap { padding: 40px 0 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; }
+    .receipt {
+      background: var(--panel); color: var(--ink);
+      border-left: var(--b) solid var(--line); border-right: var(--b) solid var(--line);
+      box-shadow: 6px 6px 0 var(--shadow);
+      padding: 22px 22px 26px; transform: rotate(-1.2deg); max-width: 420px;
+      position: relative;
+    }
+    .receipt::before, .receipt::after {
+      content: ""; position: absolute; left: -2.5px; right: -2.5px; height: 12px;
+      background-image: linear-gradient(45deg, var(--bg) 50%, transparent 50%), linear-gradient(-45deg, var(--bg) 50%, transparent 50%);
+      background-size: 14px 14px; background-repeat: repeat-x;
+    }
+    .receipt::before { top: -12px; border-bottom: var(--b) solid var(--line); }
+    .receipt::after { bottom: -12px; border-top: var(--b) solid var(--line); transform: scaleY(-1); }
+    .receipt .rh { text-align: center; border-bottom: 2px dashed var(--line); padding-bottom: 12px; margin-bottom: 12px; }
+    .receipt .rh .t { font-weight: 900; font-size: 20px; letter-spacing: .04em; }
+    .receipt .rh .s { font-family: "Space Mono", monospace; font-size: 11px; color: var(--muted); letter-spacing: .1em; }
+    .receipt .line { display: flex; justify-content: space-between; font-family: "Space Mono", monospace; font-size: 13px; padding: 6px 0; gap: 12px; }
+    .receipt .line .rk { color: var(--muted); }
+    .receipt .line .rv { font-weight: 700; text-align: right; }
+    .receipt .rf { border-top: 2px dashed var(--line); margin-top: 12px; padding-top: 12px; text-align: center; font-family: "Space Mono", monospace; font-size: 11px; color: var(--muted); }
+    .receipt .barcode { height: 34px; margin-top: 12px; background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 4px, var(--ink) 4px 5px, transparent 5px 9px); }
+    .receipt-say h3 { font-size: clamp(24px,3vw,34px); }
+    .receipt-say p { color: var(--muted); margin-top: 14px; font-size: 16px; max-width: 32em; }
+
+    /* ---------------------------------------------------------- how / privacy */
+    .triple { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 8px 0 56px; }
+    .blok { background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 5px 5px 0 var(--shadow); padding: 20px; }
+    .blok .no { display: grid; place-items: center; width: 40px; height: 40px; background: var(--acid); color: #171610; border: var(--b) solid #171610; font-weight: 900; font-size: 20px; }
+    .blok h3 { font-size: 21px; margin-top: 14px; }
+    .blok p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+
+    /* ---------------------------------------------------------- faq */
+    .faq { padding: 6px 0 60px; max-width: 780px; }
+    .qa { border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 4px 4px 0 var(--shadow); margin-bottom: 14px; overflow: hidden; background: var(--panel); }
+    .qa button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 16px; text-align: left; background: none; border: 0; padding: 16px 18px; font-weight: 800; font-size: 17px; color: var(--ink); }
+    .qa .plus { font-family: "Space Mono", monospace; font-size: 22px; flex-shrink: 0; }
+    .qa .ans { max-height: 0; overflow: hidden; transition: max-height .28s ease; }
+    .qa .ans p { padding: 0 18px 18px; color: var(--muted); font-size: 15.5px; }
+    .qa.open .ans { max-height: 460px; }
+    .qa.open button { background: var(--acid); color: #171610; }
+
+    /* ---------------------------------------------------------- shared banner + footer */
+    .shared { padding-top: 16px; }
+    .shared .card { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--acid); color: #171610; }
+    .shared .mono { font-size: 13px; font-weight: 700; }
+    .shared button { background: none; border: 0; font-weight: 900; font-size: 18px; cursor: pointer; color: #171610; }
+
+    footer.foot { background: var(--ink); color: var(--bg); }
+    footer.foot .fin { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 26px 0; flex-wrap: wrap; }
+    footer.foot .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; }
+    footer.foot .brand .mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--acid); color: #171610; border: 2px solid var(--acid); transform: rotate(-4deg); }
+    footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; }
+
+    /* ---------------------------------------------------------- responsive */
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 24px; }
+      .burst { max-width: 220px; margin: 0; transform: rotate(-3deg); }
+      .analyze-grid, .eng2, .receipt-wrap { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .ic.span2 { grid-column: span 2; }
+      .pipeline { grid-template-columns: repeat(2, 1fr); }
+      .triple { grid-template-columns: 1fr; }
+      .receipt { margin: 0 auto; transform: rotate(-1deg); }
+      nav.links { display: none; }
+    }
+    @media (max-width: 560px) {
+      body { font-size: 16px; }
+      .cards { grid-template-columns: 1fr; }
+      .ic.span2 { grid-column: span 1; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .notes { grid-template-columns: 1fr; }
+      .result-mid { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+      .sec-head { flex-direction: column; align-items: flex-start; }
+      .hero h1 { font-size: clamp(42px, 13vw, 72px); }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "https://esm.sh/react@18.3.1",
-      "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?external=react",
-      "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime?external=react",
-      "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
-      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
-      "framer-motion": "https://esm.sh/framer-motion@11.11.0?external=react,react-dom"
-    }
-  }
-  </script>
-  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
-  <!-- onnxruntime-web: runs the model entirely in the browser (no backend) -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 </head>
-<body class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans antialiased transition-colors">
-  <div id="root"></div>
+<body>
+  <!-- ============================================================ header -->
+  <header class="bar">
+    <div class="wrap bar-in">
+      <a class="logo" href="#top"><span class="mark">◵</span> FreshCheck</a>
+      <nav class="links">
+        <a href="#analyze">Check</a>
+        <a href="#model">Model</a>
+        <a href="#numbers">Numbers</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="bar-actions">
+        <button class="toggle" id="themeBtn" aria-label="Toggle theme">☾</button>
+        <a href="#analyze" class="btn primary sm">Check a photo</a>
+      </div>
+    </div>
+  </header>
 
-  <script type="text/babel" data-type="module" data-presets="react">
-    import React, { useState, useEffect, useRef, useCallback } from "react";
-    import { createRoot } from "react-dom/client";
-    import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+  <div class="wrap shared" id="sharedSlot"></div>
 
-    /* ------------------------------------------------------------------ data */
-    const TRUST = [
-      ["🔒", "Privacy-first", "Images never leave your device"],
-      ["⚡", "Real-time", "Single forward pass"],
-      ["📡", "No backend", "Runs in your browser (WASM)"],
-      ["🎯", "Confidence scoring", "Calibrated softmax output"],
-    ];
-    const PIPELINE = [
-      ["Train", "TinyFreshNet on fruit photos", "PyTorch"],
-      ["Evaluate", "Held-out test accuracy", "PyTorch"],
-      ["Export", "Self-contained model graph", "ONNX"],
-      ["Deploy", "Static bundle, zero servers", "Vercel"],
-      ["Infer", "WASM forward pass in browser", "onnxruntime-web"],
-    ];
-    const STACK = [
-      ["PyTorch", "Model + training loop"],
-      ["torchvision", "Transforms & ImageFolder"],
-      ["ONNX", "Portable model export"],
-      ["onnxruntime-web", "In-browser WASM inference"],
-      ["React 18", "SPA frontend"],
-      ["Tailwind CSS", "Design system"],
-      ["Framer Motion", "Microinteractions"],
-      ["Vercel", "Static hosting / CI deploy"],
-    ];
-    const FAQ = [
-      ["Does my photo get uploaded to the cloud?",
-       "No. The image is read and analyzed entirely inside your browser using WebAssembly. The pixels never leave your device, because there's no server to send them to."],
-      ["How big is the model?",
-       "TinyFreshNet has about 24,000 parameters: three small convolutional blocks and a linear layer. It's kept small on purpose, so it trains in a few minutes and runs instantly."],
-      ["How accurate is it, really?",
-       "97.7% on a held-out test set: 43 of 44 images it never saw during training or checkpoint selection, with a 95% confidence interval of 88.2% to 99.6%. The test set is small (n=44), so that interval is wide. The source data had heavy duplication between its train and test folders, so it was de-duplicated down to 300 unique banana images and split group-aware into train/val/test, keeping near-duplicate frames on the same side. That's why this number is believable rather than a suspicious 100%. It's a real result for bananas on a small set, not a claim about every fruit."],
-      ["Can it handle other fruits?",
-       "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, re-export to ONNX, and the same UI picks up the new model and its metrics automatically."],
-      ["How is latency measured?",
-       "It's timed in the browser with performance.now() around the model's forward pass, so the number you see is the actual time it took on your machine, usually a few milliseconds."],
-    ];
+  <!-- ============================================================ hero -->
+  <div class="hero" id="top">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <span class="stamp"><span class="hole"></span> In-browser freshness check</span>
+          <h1 style="margin-top:22px">Is that banana <span class="hl">still good?</span></h1>
+          <p class="lede">Take a photo. A small neural network runs right in your browser and calls it fresh or rotten, plus how sure it is. Nothing gets uploaded. The picture never leaves your phone.</p>
+          <div class="cta">
+            <a href="#analyze" class="btn primary">Check a photo</a>
+            <a href="#numbers" class="btn">See the numbers</a>
+          </div>
+        </div>
+        <div>
+          <div class="burst">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <polygon style="fill:var(--acid);stroke:#171610;stroke-width:3" points="100,4 116,28 145,18 148,49 178,52 168,81 196,96 174,118 192,146 161,150 162,181 133,171 122,199 100,178 78,199 67,171 38,181 39,150 8,146 26,118 4,96 32,81 22,52 52,49 55,18 84,28"/>
+            </svg>
+            <div class="cap">
+              <div class="lab">Held-out test</div>
+              <div class="big" id="burstAcc">97.7%</div>
+              <div class="sub" id="burstSub">43 / 44 correct</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="stickers" id="stickers"></div>
+    </div>
+  </div>
 
-    /* --------------------------------------------------------------- helpers */
-    const pct = (x) => `${(x * 100).toFixed(1)}%`;
-    const ciText = (ci) => ci ? `${pct(ci[0])}–${pct(ci[1])}` : "";
-    const bytes = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(2)} MB`;
-    const cls = (...a) => a.filter(Boolean).join(" ");
-    const isRotten = (c) => /rotten|bad|spoil/i.test(c);
+  <!-- ============================================================ analyze -->
+  <section id="analyze">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">Drop a photo in</span>
+          <h2>Grade your fruit</h2>
+          <p class="lead">Upload, snap a photo, or try an example. It runs on your device and answers on the spot.</p>
+        </div>
+      </div>
+      <div class="analyze-grid">
+        <!-- upload -->
+        <div class="card drop" id="drop">
+          <div class="zone" id="zone">
+            <div id="dropInner">
+              <div class="fruit">🍌</div>
+              <div class="big">Drag a fruit photo here</div>
+              <div class="small">or tap to browse. Drop several and they run as a batch.</div>
+            </div>
+          </div>
+          <input type="file" id="file" accept="image/*" multiple hidden />
+          <div class="drop-actions">
+            <button class="btn ink sm" id="browseBtn">Browse</button>
+            <button class="btn sm" id="camBtn">Camera</button>
+          </div>
+          <div class="examples" id="examplesWrap" hidden>
+            <div class="lbl">Try one of these</div>
+            <div class="ex-row" id="exRow"></div>
+          </div>
+        </div>
+        <!-- result -->
+        <div class="card result" id="result">
+          <div class="placeholder" id="placeholder">
+            <div>
+              <div class="scale">⚖️</div>
+              <div class="t">Nothing to grade yet</div>
+              <div class="small" style="color:var(--muted);margin-top:6px">Add a photo and the model gets to work.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    /* ---- in-browser inference (onnxruntime-web), no backend ---- */
+  <!-- ============================================================ model insights -->
+  <section id="model">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">What's under the hood</span>
+          <h2>The model, by the numbers</h2>
+          <p class="lead">Everything here is measured straight from the trained model by evaluate.py, not typed in. Test accuracy comes from a held-out split the model never saw while training or picking its checkpoint, so it shows how it does on new fruit, not what it memorized. The test set is small (44 images), so the 95% confidence interval is wide.</p>
+        </div>
+      </div>
+      <div class="cards" id="insightCards"></div>
+      <div class="forward">
+        <div class="card" style="padding:20px">
+          <div class="eyebrow" style="margin-bottom:14px">Forward pass</div>
+          <div class="layers" id="layers"></div>
+          <p class="note" id="forwardNote"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ engineering -->
+  <section id="engineering">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">How it ships</span>
+          <h2>From photos to a live model</h2>
+          <p class="lead">The whole path: train in PyTorch, check it honestly, export to ONNX, and run it in the browser with WebAssembly.</p>
+        </div>
+      </div>
+      <div class="pipeline" id="pipeline"></div>
+      <div class="eng2">
+        <div class="card" style="padding:20px">
+          <div class="eyebrow" style="margin-bottom:8px">Tech stack</div>
+          <div class="stack" id="stack"></div>
+        </div>
+        <div class="card diagram" style="padding:20px">
+          <div class="eyebrow" style="margin-bottom:12px">Deployment</div>
+<pre>static page (Vercel CDN)
+   |  canvas -> Float32 tensor [1,3,64,64]
+   v
+onnxruntime-web (WebAssembly)
+   |  TinyFreshNet.onnx, one forward pass
+   v
+softmax -> { class, confidence, timing }</pre>
+          <p class="note">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully in the browser, so the demo stays up with no cold starts. A FastAPI server is in the repo if you would rather run it on a machine.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ numbers / receipt -->
+  <section id="numbers">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">The receipt</span>
+          <h2>Numbers for the model that's running</h2>
+          <p class="lead">Pulled from the shipped model and its dataset. Latency is whatever your machine just clocked.</p>
+        </div>
+      </div>
+      <div class="receipt-wrap">
+        <div class="receipt" id="receipt"></div>
+        <div class="receipt-say">
+          <h3>Honest, not impressive-sounding.</h3>
+          <p>The headline is held-out test accuracy with its confidence interval, not the training score. Validation reads high because it picks the checkpoint, so it is kept off to the side rather than sold as the result.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ how it works -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">Three steps</span>
+          <h2>How it works</h2>
+        </div>
+      </div>
+      <div class="triple">
+        <div class="blok"><div class="no">1</div><h3>Add a photo</h3><p>Drag one in, browse, or use your camera. It all stays on your device.</p></div>
+        <div class="blok"><div class="no">2</div><h3>Run it locally</h3><p>The photo gets normalized and passed through TinyFreshNet once.</p></div>
+        <div class="blok"><div class="no">3</div><h3>Read the verdict</h3><p>Fresh or rotten, with confidence, the full split, and timing.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ privacy -->
+  <section id="privacy">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">Where your photo goes</span>
+          <h2>Nowhere, basically</h2>
+          <p class="lead">Easy to trust because there's nothing to trust. The photo doesn't leave the page.</p>
+        </div>
+      </div>
+      <div class="triple">
+        <div class="blok"><div class="no">✕</div><h3>Never uploaded</h3><p>Your photo is decoded and run in the browser. The pixels stay on your device.</p></div>
+        <div class="blok"><div class="no">∅</div><h3>No server</h3><p>Inference runs in WebAssembly on your machine, so there's nowhere to send anything.</p></div>
+        <div class="blok"><div class="no">=</div><h3>Nothing hidden</h3><p>Every result shows the full probability split and the timing, so you can see what it decided.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ faq -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <span class="eyebrow">Questions</span>
+          <h2>FAQ</h2>
+        </div>
+      </div>
+      <div class="faq" id="faqList"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ footer -->
+  <footer class="foot">
+    <div class="wrap fin">
+      <div class="brand"><span class="mark">◵</span> FreshCheck</div>
+      <div class="stk">TinyFreshNet · PyTorch · ONNX · onnxruntime-web</div>
+    </div>
+  </footer>
+
+  <!-- camera modal mount -->
+  <div id="camMount"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* ---------------------------------------------------- inference (unchanged) */
     let CLASSES = ["fresh", "rotten"];
     const MEAN = [0.485, 0.456, 0.406], STD = [0.229, 0.224, 0.225], SIZE = 64;
     let _session = null;
@@ -200,733 +640,339 @@
       };
     }
 
-    /* ------------------------------------------------------------ primitives */
-    const reveal = {
-      initial: { opacity: 0, y: 24 },
-      whileInView: { opacity: 1, y: 0 },
-      viewport: { once: true, margin: "-80px" },
-      transition: { duration: .5, ease: "easeOut" },
-    };
+    /* ---------------------------------------------------- helpers */
+    const $ = (s, r) => (r || document).querySelector(s);
+    const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+    const pct = (x) => (x * 100).toFixed(1) + "%";
+    const ciText = (ci) => ci ? pct(ci[0]) + " to " + pct(ci[1]) : "";
+    const bytes = (b) => b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(2) + " MB";
+    const isRotten = (c) => /rotten|bad|spoil/i.test(c);
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-    function Section({ id, eyebrow, title, lead, children }) {
-      return (
-        <section id={id} className="max-w-6xl mx-auto px-5 py-20 scroll-mt-20">
-          {(eyebrow || title) && (
-            <motion.div {...reveal} className="text-center mb-12">
-              {eyebrow && <div className="text-brand-600 dark:text-brand-400 font-semibold tracking-wide uppercase text-xs mb-3">{eyebrow}</div>}
-              {title && <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">{title}</h2>}
-              {lead && <p className="mt-3 text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">{lead}</p>}
-            </motion.div>
-          )}
-          {children}
-        </section>
-      );
+    /* ---------------------------------------------------- theme */
+    const root = document.documentElement;
+    const themeBtn = $("#themeBtn");
+    const setTheme = (t) => { root.setAttribute("data-theme", t); localStorage.fcTheme = t; themeBtn.textContent = t === "dark" ? "☀" : "☾"; };
+    setTheme(localStorage.fcTheme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+    themeBtn.addEventListener("click", () => setTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark"));
+
+    /* ---------------------------------------------------- static content data */
+    const PIPELINE = [
+      ["Train", "TinyFreshNet on banana photos", "PyTorch"],
+      ["Evaluate", "Held-out test accuracy", "PyTorch"],
+      ["Export", "Self-contained model graph", "ONNX"],
+      ["Deploy", "Static bundle, zero servers", "Vercel"],
+      ["Infer", "WASM forward pass in browser", "onnxruntime-web"],
+    ];
+    const STACK = [
+      ["PyTorch", "Model + training loop"],
+      ["torchvision", "Transforms & ImageFolder"],
+      ["ONNX", "Portable model export"],
+      ["onnxruntime-web", "In-browser WASM inference"],
+      ["Vanilla JS + CSS", "Hand-built UI, no framework"],
+      ["Vercel", "Static hosting / CI deploy"],
+    ];
+    const FAQ = [
+      ["Does my photo go to the cloud?",
+       "No. It's decoded and run inside your browser with WebAssembly. There's no server to send it to, so the pixels stay put."],
+      ["How big is the model?",
+       "About 24,000 parameters: three small convolutional blocks and one linear layer. Small on purpose, so it trains in a few minutes and runs the moment you drop a photo in."],
+      ["How accurate is it, really?",
+       "97.7% on a held-out test set: 43 of 44 images it never saw while training, with a 95% confidence interval of 88.2% to 99.6%. That set is small, so the interval is wide. The source data had near-identical copies shared between its train and test folders, so I de-duplicated down to 300 unique banana photos and split them group-aware, keeping look-alike frames on the same side. That's why the number is believable instead of a suspicious 100%. Real result for bananas on a small set, not a promise about every fruit."],
+      ["Does it work on other fruit?",
+       "The pipeline doesn't care what the fruit is. Point it at a bigger multi-fruit dataset, retrain with the same scripts, re-export to ONNX, and the page picks up the new model and its numbers on its own."],
+      ["How's the latency measured?",
+       "With performance.now() around the forward pass, in your browser. The number you see is the real time it took on your machine, usually a few milliseconds."],
+    ];
+
+    /* ---------------------------------------------------- render static-ish blocks */
+    function renderPipeline() {
+      const box = $("#pipeline");
+      PIPELINE.forEach(([s, d, t], i) => {
+        box.appendChild(el("div", "step",
+          '<div class="no">0' + (i + 1) + '</div><div class="nm">' + s + '</div><div class="ds">' + d + '</div><span class="tg">' + t + '</span>'));
+      });
+    }
+    function renderStack() {
+      const box = $("#stack");
+      STACK.forEach(([n, d]) => {
+        box.appendChild(el("div", "srow", '<span class="nm">' + n + '</span><span class="ds">' + d + '</span>'));
+      });
+    }
+    function renderFaq() {
+      const box = $("#faqList");
+      FAQ.forEach(([q, a], i) => {
+        const qa = el("div", "qa" + (i === 0 ? " open" : ""));
+        qa.innerHTML = '<button><span>' + esc(q) + '</span><span class="plus">' + (i === 0 ? "−" : "+") + '</span></button><div class="ans"><p>' + esc(a) + '</p></div>';
+        qa.querySelector("button").addEventListener("click", () => {
+          const open = qa.classList.toggle("open");
+          qa.querySelector(".plus").textContent = open ? "−" : "+";
+        });
+        box.appendChild(qa);
+      });
     }
 
-    function Card({ className, children }) {
-      return <div className={cls("rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 glass", className)}>{children}</div>;
-    }
+    /* ---------------------------------------------------- meta-driven blocks */
+    function renderMeta(meta) {
+      if (Array.isArray(meta.classes)) CLASSES = meta.classes;
+      const a = meta.accuracy || {};
+      const d = meta.dataset || {};
 
-    function Chip({ children, tone = "slate" }) {
-      const tones = {
-        slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-        brand: "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-500/10 dark:text-brand-300 dark:border-brand-500/30",
-      };
-      return <span className={cls("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold", tones[tone])}>{children}</span>;
-    }
+      if (a.test != null) $("#burstAcc").textContent = pct(a.test);
+      if (a.test_correct != null) $("#burstSub").textContent = a.test_correct + " / " + a.test_total + " correct";
 
-    /* --------------------------------------------------------------- nav bar */
-    function Nav({ dark, setDark }) {
-      const links = [["analyze","Analyze"],["model","Model insights"],["tech","Engineering"],["benchmarks","Benchmarks"],["faq","FAQ"]];
-      return (
-        <header className="sticky top-0 z-40 border-b border-slate-200/70 dark:border-slate-800/70 bg-white/75 dark:bg-slate-950/70 glass">
-          <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
-            <a href="#top" className="flex items-center gap-2.5 font-extrabold text-lg">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-lg shadow-brand-500/30">🍃</span>
-              FreshCheck
-            </a>
-            <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600 dark:text-slate-300">
-              {links.map(([h,l]) => <a key={h} href={`#${h}`} className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">{l}</a>)}
-            </nav>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setDark(d => !d)} aria-label="Toggle dark mode"
-                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                {dark ? "☀️" : "🌙"}
-              </button>
-              <a href="#analyze" className="hidden sm:inline-flex rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold px-4 py-2 transition-colors shadow-lg shadow-brand-600/25">Try it</a>
-            </div>
-          </div>
-        </header>
-      );
-    }
-
-    /* ----------------------------------------------------------------- hero */
-    function Hero({ meta }) {
-      const stats = [
-        ["Test accuracy (held-out)", meta ? pct(meta.accuracy.test) : "…",
-         meta ? `95% CI ${ciText(meta.accuracy.test_ci95)}` : ""],
-        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "…", ""],
-        ["Inference", "in-browser", ""],
+      // hero stickers
+      const stk = $("#stickers");
+      const stickers = [
+        [a.test != null ? pct(a.test) : "…", "Held-out accuracy"],
+        [meta.params ? (meta.params / 1000).toFixed(1) + "k" : "…", "Parameters"],
+        ["0", "Photos uploaded"],
+        ["in-browser", "Where it runs"],
       ];
-      return (
-        <div id="top" className="grid-bg border-b border-slate-200/60 dark:border-slate-800/60">
-          <div className="max-w-6xl mx-auto px-5 pt-20 pb-16 text-center">
-            <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} transition={{duration:.5}}>
-              <Chip tone="brand">● Live computer-vision demo</Chip>
-            </motion.div>
-            <motion.h1 initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.05}}
-              className="mt-6 text-4xl sm:text-6xl font-black tracking-tight leading-[1.05]">
-              Know if your fruit is<br className="hidden sm:block"/> still <span className="grad-text">fresh</span>.
-            </motion.h1>
-            <motion.p initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.12}}
-              className="mt-5 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              Upload a photo of a banana and a small neural network tells you whether it's good to eat,
-              along with how sure it is. Everything runs in your browser, so your photo never leaves your device.
-            </motion.p>
-            <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.18}}
-              className="mt-7 flex flex-wrap justify-center gap-2">
-              {TRUST.map(([i,t]) => <Chip key={t}>{i} {t}</Chip>)}
-            </motion.div>
-            <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.55,delay:.24}}
-              className="mt-9 flex flex-wrap justify-center gap-3">
-              <a href="#analyze" className="rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold px-6 py-3 shadow-xl shadow-brand-600/30 transition-colors">Analyze a photo →</a>
-              <a href="#model" className="rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold px-6 py-3 transition-colors">View model insights</a>
-            </motion.div>
+      stickers.forEach(([v, k], i) => {
+        const s = el("div", "sticker" + (i < 2 ? " pin" : ""));
+        s.innerHTML = '<div class="v">' + v + '</div><div class="k">' + k + '</div>';
+        stk.appendChild(s);
+      });
 
-            <motion.div initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.6,delay:.3}}
-              className="mt-14 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-              {stats.map(([l,v,sub]) => (
-                <Card key={l} className="py-5 px-3">
-                  <div className="text-2xl sm:text-3xl font-extrabold grad-text font-mono">{v}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">{l}</div>
-                  {sub && <div className="mt-0.5 text-[10px] font-mono text-slate-400">{sub}</div>}
-                </Card>
-              ))}
-            </motion.div>
-          </div>
-        </div>
-      );
+      // insight cards
+      const cards = $("#insightCards");
+      const ci = a.test_ci95;
+      const items = [
+        ["ic hi", "Test accuracy (held-out)", a.test != null ? pct(a.test) : "…", a.test_correct != null ? a.test_correct + " / " + a.test_total + " correct" : "", false, false],
+        ["ic", "95% conf. interval", "", ci ? ciText(ci) : "", true, false],
+        ["ic span2", "Architecture", meta.architecture || "TinyFreshNet", "", false, true],
+        ["ic", "Parameters", meta.params ? meta.params.toLocaleString() : "…", "", false, false],
+        ["ic", "Validation acc", a.val != null ? pct(a.val) : "…", "checkpoint pick", false, false],
+        ["ic", "Train acc", a.train != null ? pct(a.train) : "…", "", false, false],
+        ["ic", "Train images", d.train_images != null ? String(d.train_images) : "…", "", false, false],
+        ["ic", "Test images", d.test_images != null ? String(d.test_images) : "…", "never seen in training", false, false],
+      ];
+      items.forEach(([cls, k, v, sub, ciBig, small]) => {
+        const c = el("div", cls);
+        const vHtml = ciBig
+          ? '<div class="v small">' + esc(sub) + '</div>'
+          : '<div class="v' + (small ? " small" : "") + '">' + esc(v) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '');
+        c.innerHTML = '<div class="k">' + esc(k) + '</div>' + vHtml;
+        cards.appendChild(c);
+      });
+
+      // forward-pass layers
+      const layers = meta.layers || [];
+      const lb = $("#layers");
+      layers.forEach((ly, i) => {
+        lb.appendChild(el("span", "ly", esc(ly)));
+        if (i < layers.length - 1) lb.appendChild(el("span", "arw", "→"));
+      });
+      const p = (meta.params || 23938) / 1000;
+      $("#forwardNote").textContent = "Trained on the " + (d.source || "banana") + " dataset. The compact design keeps the model near " + p.toFixed(1) + "k parameters, so it trains in minutes and runs in real time on CPU.";
+
+      // receipt
+      renderReceipt(meta);
+
+      // examples
+      if (Array.isArray(meta.examples) && meta.examples.length) {
+        $("#examplesWrap").hidden = false;
+        const row = $("#exRow");
+        meta.examples.forEach(u => {
+          const b = el("button");
+          b.innerHTML = '<img src="' + esc(u) + '" alt="example fruit" />';
+          b.addEventListener("click", () => loadExample(u));
+          row.appendChild(b);
+        });
+      }
     }
 
-    /* ------------------------------------------------------------ viz pieces */
-    function Gauge({ value, label }) {
-      const r = 52, c = 2 * Math.PI * r;
-      const rotten = isRotten(label);
-      const color = rotten ? "#ef4444" : "#10b981";
-      return (
-        <div className="relative w-36 h-36">
-          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-            <circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" className="stroke-slate-200 dark:stroke-slate-800" />
-            <motion.circle cx="60" cy="60" r={r} fill="none" strokeWidth="10" strokeLinecap="round"
-              stroke={color} strokeDasharray={c}
-              initial={{ strokeDashoffset: c }}
-              animate={{ strokeDashoffset: c * (1 - value) }}
-              transition={{ duration: 1, ease: "easeOut" }} />
-          </svg>
-          <div className="absolute inset-0 grid place-items-center">
-            <div className="text-center">
-              <div className="text-3xl font-extrabold font-mono">{pct(value)}</div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">confidence</div>
-            </div>
-          </div>
-        </div>
-      );
+    let lastLatency = null;
+    function renderReceipt(meta) {
+      const a = meta.accuracy || {}, d = meta.dataset || {};
+      const rows = [
+        ["TEST ACC", a.test != null ? pct(a.test) : "-"],
+        ["  n correct", a.test_correct != null ? a.test_correct + "/" + a.test_total : "-"],
+        ["  95% CI", a.test_ci95 ? ciText(a.test_ci95) : "-"],
+        ["VAL ACC", a.val != null ? pct(a.val) : "-"],
+        ["TRAIN ACC", a.train != null ? pct(a.train) : "-"],
+        ["PARAMS", meta.params ? meta.params.toLocaleString() : "-"],
+        ["TRAIN SET", d.train_images != null ? d.train_images + " img" : "-"],
+        ["TEST SET", d.test_images != null ? d.test_images + " img" : "-"],
+        ["LATENCY", lastLatency != null ? lastLatency + " ms" : "run a photo"],
+        ["DEVICE", "browser (wasm)"],
+      ];
+      const r = $("#receipt");
+      r.innerHTML =
+        '<div class="rh"><div class="t">FRESHCHECK</div><div class="s">MODEL // RECEIPT</div></div>' +
+        rows.map(([k, v]) => '<div class="line"><span class="rk">' + esc(k) + '</span><span class="rv">' + esc(v) + '</span></div>').join("") +
+        '<div class="barcode"></div>' +
+        '<div class="rf">measured by evaluate.py // thank you</div>';
     }
 
-    function ProbBars({ probs }) {
-      return (
-        <div className="space-y-3">
-          {probs.map((p, i) => {
-            const rotten = isRotten(p.label);
-            return (
-              <div key={p.label}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="font-semibold capitalize">{p.label}</span>
-                  <span className="font-mono text-slate-500 dark:text-slate-400">{pct(p.prob)}</span>
-                </div>
-                <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <motion.div className={cls("h-full rounded-full", rotten ? "bg-red-500" : "bg-brand-500")}
-                    initial={{ width: 0 }} animate={{ width: pct(p.prob) }}
-                    transition={{ duration: .8, delay: .15 + i*.1, ease: "easeOut" }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
+    /* ---------------------------------------------------- result rendering */
+    const resultBox = $("#result");
 
-    function Metric({ label, value, mono = true }) {
-      return (
-        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-          <div className={cls("text-sm font-semibold mt-0.5", mono && "font-mono")}>{value}</div>
-        </div>
-      );
-    }
-
-    /* ----------------------------------------------------------- result view */
-    function ResultDashboard({ result, preview }) {
-      const rotten = isRotten(result.predicted_class);
+    function verdictView(res) {
+      const rotten = isRotten(res.predicted_class);
       const rec = rotten
-        ? "Best to toss this one. It has a lot of the dark, bruised coloring the model links to spoiled fruit."
-        : "Looks good to eat. Store it somewhere cool and dry to keep it that way longer.";
-      const explanation = rotten
-        ? "The model mostly goes on color and texture. A lot of dark, low-saturation surface usually reads as bruising or rot."
-        : "Even color and smooth texture, without much dark spotting, is what the model tends to read as fresh.";
-      const report = JSON.stringify(result, null, 2);
+        ? "I'd toss it. There's a lot of the dark, bruised look the model ties to spoilage."
+        : "Good to eat. Keep it somewhere cool and dry and it lasts longer.";
+      const why = rotten
+        ? "The model mostly goes on color and texture. Big patches of dark, dull surface usually mean bruising or rot."
+        : "Even color, smooth skin, not much dark spotting. That's what the model reads as fresh.";
+      const conf = res.confidence, C = 2 * Math.PI * 52;
+      const bars = res.probabilities.map(p => {
+        const rr = isRotten(p.label);
+        return '<div class="row"><div class="top"><span style="text-transform:capitalize">' + esc(p.label) + '</span><span class="mono">' + pct(p.prob) + '</span></div>' +
+          '<div class="track"><div class="fill ' + (rr ? "rotten" : "fresh") + '" style="width:0" data-w="' + pct(p.prob) + '"></div></div></div>';
+      }).join("");
 
-      const copy = () => navigator.clipboard?.writeText(report);
-      const download = () => {
-        const blob = new Blob([
-          `FreshCheck Analysis Report\n===========================\n\n` +
-          `Prediction : ${result.predicted_class.toUpperCase()}\n` +
-          `Confidence : ${pct(result.confidence)}\n` +
-          `Latency    : ${result.latency_ms} ms (${result.device})\n` +
-          `Image      : ${result.image.width}×${result.image.height}, ${bytes(result.image.bytes)}\n\n` +
-          `Class probabilities:\n` +
-          result.probabilities.map(p => `  ${p.label.padEnd(8)} ${pct(p.prob)}`).join("\n") +
-          `\n\nRecommendation:\n  ${rec}\n\nRaw JSON:\n${report}\n`
-        ], { type: "text/plain" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob); a.download = "freshcheck-report.txt"; a.click();
+      const html =
+        '<div class="verdict ' + (rotten ? "rotten" : "fresh") + '">' +
+          '<div class="tag">' + (rotten ? "ROTTEN" : "FRESH") + '</div>' +
+          '<div class="meta">' + pct(res.confidence) + ' sure // ' + res.latency_ms + ' ms</div>' +
+        '</div>' +
+        '<div class="result-mid">' +
+          '<div class="gauge"><svg viewBox="0 0 120 120">' +
+            '<circle cx="60" cy="60" r="52" fill="none" style="stroke:var(--bg)" stroke-width="12"/>' +
+            '<circle cx="60" cy="60" r="52" fill="none" style="stroke:' + (rotten ? "var(--tomato)" : "var(--acid-deep)") + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="' + C + '" id="gaugeArc"/>' +
+          '</svg><div class="num"><b>' + pct(conf) + '</b><span>confidence</span></div></div>' +
+          '<div class="bars">' + bars + '</div>' +
+        '</div>' +
+        '<div class="metrics">' +
+          '<div class="m"><div class="k">Latency</div><div class="v">' + res.latency_ms + ' ms</div></div>' +
+          '<div class="m"><div class="k">Device</div><div class="v">WASM</div></div>' +
+          '<div class="m"><div class="k">Size</div><div class="v">' + res.image.width + '×' + res.image.height + '</div></div>' +
+          '<div class="m"><div class="k">File</div><div class="v">' + bytes(res.image.bytes) + '</div></div>' +
+        '</div>' +
+        '<div class="notes">' +
+          '<div class="n"><div class="k">Verdict</div><p>' + rec + '</p></div>' +
+          '<div class="n"><div class="k">Why</div><p>' + why + '</p></div>' +
+        '</div>' +
+        '<div class="result-actions">' +
+          '<button class="btn sm" data-act="copy">Copy JSON</button>' +
+          '<button class="btn sm" data-act="download">Download report</button>' +
+          '<button class="btn sm" data-act="share">Share</button>' +
+        '</div>';
+
+      resultBox.innerHTML = html;
+
+      requestAnimationFrame(() => {
+        const arc = $("#gaugeArc");
+        if (arc) { arc.style.transition = "stroke-dashoffset .9s ease"; arc.style.strokeDashoffset = C * (1 - conf); }
+        resultBox.querySelectorAll(".fill").forEach(f => { f.style.width = f.dataset.w; });
+      });
+
+      const report = JSON.stringify(res, null, 2);
+      resultBox.querySelector('[data-act="copy"]').onclick = () => navigator.clipboard && navigator.clipboard.writeText(report);
+      resultBox.querySelector('[data-act="download"]').onclick = () => {
+        const txt = "FreshCheck report\n=================\n\nVerdict    : " + res.predicted_class.toUpperCase() +
+          "\nConfidence : " + pct(res.confidence) + "\nLatency    : " + res.latency_ms + " ms (" + res.device + ")\n" +
+          "Image      : " + res.image.width + "x" + res.image.height + ", " + bytes(res.image.bytes) + "\n\nProbabilities:\n" +
+          res.probabilities.map(p => "  " + p.label.padEnd(8) + " " + pct(p.prob)).join("\n") + "\n\n" + rec + "\n\nRaw JSON:\n" + report + "\n";
+        const blob = new Blob([txt], { type: "text/plain" });
+        const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "freshcheck-report.txt"; link.click();
       };
-      const share = () => {
-        const min = { c: result.predicted_class, p: +result.confidence.toFixed(4), t: result.latency_ms };
+      resultBox.querySelector('[data-act="share"]').onclick = () => {
+        const min = { c: res.predicted_class, p: +res.confidence.toFixed(4), t: res.latency_ms };
         const hash = "r=" + btoa(JSON.stringify(min));
-        const url = `${location.origin}${location.pathname}#${hash}`;
-        navigator.clipboard?.writeText(url);
+        const url = location.origin + location.pathname + "#" + hash;
+        if (navigator.clipboard) navigator.clipboard.writeText(url);
         history.replaceState(null, "", "#" + hash);
       };
-
-      return (
-        <motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .4 }} className="space-y-5">
-          <div className={cls("rounded-2xl p-5 border flex items-center gap-5",
-            rotten ? "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30"
-                   : "bg-brand-50 border-brand-200 dark:bg-brand-500/10 dark:border-brand-500/30")}>
-            <div className={cls("w-14 h-14 grid place-items-center rounded-2xl text-3xl shrink-0",
-              rotten ? "bg-red-100 dark:bg-red-500/20" : "bg-brand-100 dark:bg-brand-500/20")}>
-              {rotten ? "⚠️" : "✓"}
-            </div>
-            <div>
-              <div className={cls("text-2xl font-extrabold", rotten ? "text-red-700 dark:text-red-400" : "text-brand-700 dark:text-brand-400")}>
-                {rotten ? "Spoiled" : "Fresh"}
-              </div>
-              <div className="text-sm text-slate-600 dark:text-slate-300">{pct(result.confidence)} confidence · {result.latency_ms} ms inference</div>
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-5 items-center">
-            <div className="flex justify-center"><Gauge value={result.confidence} label={result.predicted_class} /></div>
-            <div><div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Class probabilities</div><ProbBars probs={result.probabilities} /></div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Metric label="Latency" value={`${result.latency_ms} ms`} />
-            <Metric label="Device" value={result.device.toUpperCase()} />
-            <Metric label="Dimensions" value={`${result.image.width}×${result.image.height}`} />
-            <Metric label="File size" value={bytes(result.image.bytes)} />
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Card className="p-4">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Recommendation</div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">{rec}</p>
-            </Card>
-            <Card className="p-4">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Model explanation</div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">{explanation}</p>
-            </Card>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {[["Copy JSON",copy],["Download report",download],["Share link",share]].map(([t,fn]) => (
-              <button key={t} onClick={fn}
-                className="rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold px-3.5 py-2 transition-colors">{t}</button>
-            ))}
-          </div>
-        </motion.div>
-      );
     }
 
-    function Skeleton() {
-      return (
-        <div className="space-y-5">
-          <div className="skeleton h-24 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-          <div className="grid sm:grid-cols-2 gap-5">
-            <div className="skeleton h-36 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-            <div className="space-y-3">
-              <div className="skeleton h-8 rounded-lg bg-slate-100 dark:bg-slate-800" />
-              <div className="skeleton h-8 rounded-lg bg-slate-100 dark:bg-slate-800" />
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-3">{[0,1,2,3].map(i => <div key={i} className="skeleton h-14 rounded-xl bg-slate-100 dark:bg-slate-800" />)}</div>
-        </div>
-      );
+    function showSpinner() {
+      resultBox.innerHTML = '<div class="spinner"><div class="load">Reading the pixels...</div><div class="blocks"><i></i><i></i><i></i></div></div>';
+    }
+    function showError(msg) {
+      resultBox.innerHTML = '<div class="placeholder"><div><div class="scale">✕</div><div class="t" style="color:var(--tomato)">That didn\'t work</div><div class="small" style="color:var(--muted);margin-top:6px">' + esc(msg) + '</div></div></div>';
+    }
+    function renderBatch(items) {
+      const rows = items.map(b => {
+        if (b.error) return '<div class="item"><div style="flex:1"><div class="fn">' + esc(b.image ? b.image.filename : "image") + '</div><div class="small" style="color:var(--tomato)">' + esc(b.error) + '</div></div></div>';
+        const rr = isRotten(b.predicted_class);
+        return '<div class="item">' + (b._url ? '<img src="' + b._url + '" alt="" />' : "") +
+          '<div style="flex:1;min-width:0"><div class="fn">' + esc(b.image.filename) + '</div><div class="small mono" style="color:var(--muted)">' + b.latency_ms + ' ms</div></div>' +
+          '<span class="pill ' + (rr ? "rotten" : "fresh") + '">' + (rr ? "ROTTEN" : "FRESH") + ' ' + pct(b.confidence) + '</span></div>';
+      }).join("");
+      resultBox.innerHTML = '<div class="batch"><div class="eyebrow" style="margin-bottom:12px">Batch // ' + items.length + '</div>' + rows + '</div>';
     }
 
-    /* -------------------------------------------------------------- analyzer */
-    function CameraModal({ onClose, onCapture }) {
-      const videoRef = useRef(null);
-      const [err, setErr] = useState(null);
-      useEffect(() => {
-        let stream;
-        navigator.mediaDevices?.getUserMedia({ video: { facingMode: "environment" } })
-          .then(s => { stream = s; if (videoRef.current) videoRef.current.srcObject = s; })
-          .catch(() => setErr("Camera access was denied or is unavailable."));
-        return () => stream?.getTracks().forEach(t => t.stop());
-      }, []);
-      const snap = () => {
-        const v = videoRef.current; if (!v) return;
-        const cv = document.createElement("canvas");
-        cv.width = v.videoWidth; cv.height = v.videoHeight;
-        cv.getContext("2d").drawImage(v, 0, 0);
-        cv.toBlob(b => { onCapture(new File([b], "camera.jpg", { type: "image/jpeg" })); onClose(); }, "image/jpeg", .92);
+    /* ---------------------------------------------------- upload flow */
+    const fileInput = $("#file"), drop = $("#drop"), zone = $("#zone"), inner = $("#dropInner");
+
+    async function runSingle(file) {
+      inner.innerHTML = '<img class="prev" src="' + URL.createObjectURL(file) + '" alt="selected fruit" />';
+      showSpinner();
+      try { const r = await predictFile(file); lastLatency = r.latency_ms; verdictView(r); renderReceiptRefresh(); }
+      catch (e) { showError(e.message); }
+    }
+    async function runBatch(files) {
+      inner.innerHTML = '<div class="fruit">🧺</div><div class="big">' + files.length + ' photos</div><div class="small">running as a batch</div>';
+      showSpinner();
+      const out = [];
+      for (const f of files) {
+        try { const r = await predictFile(f); out.push(Object.assign({ _url: URL.createObjectURL(f) }, r)); }
+        catch (e) { out.push({ error: e.message, image: { filename: f.name } }); }
+        renderBatch(out);
+      }
+      lastLatency = (out.find(o => o.latency_ms) || {}).latency_ms || lastLatency;
+      renderReceiptRefresh();
+    }
+    function handleFiles(list) {
+      const arr = [...list].filter(f => f.type.startsWith("image/"));
+      if (!arr.length) return;
+      arr.length === 1 ? runSingle(arr[0]) : runBatch(arr);
+    }
+    async function loadExample(url) {
+      const blob = await (await fetch(url)).blob();
+      runSingle(new File([blob], url.split("/").pop(), { type: blob.type || "image/png" }));
+    }
+    function renderReceiptRefresh() { if (window._meta) renderReceipt(window._meta); }
+
+    zone.addEventListener("click", () => fileInput.click());
+    $("#browseBtn").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", e => handleFiles(e.target.files));
+    ["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("hot"); }));
+    ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); if (ev === "drop") handleFiles(e.dataTransfer.files); drop.classList.remove("hot"); }));
+
+    /* ---------------------------------------------------- camera */
+    $("#camBtn").addEventListener("click", openCamera);
+    function openCamera() {
+      const mount = $("#camMount");
+      mount.innerHTML =
+        '<div style="position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(0,0,0,.6);padding:16px" id="camBg">' +
+        '<div class="card" style="max-width:520px;width:100%;padding:16px" id="camCard">' +
+        '<video id="cam" autoplay playsinline style="width:100%;border:2.5px solid var(--line);border-radius:4px;background:#000;aspect-ratio:16/9;object-fit:cover"></video>' +
+        '<div style="display:flex;gap:10px;margin-top:12px"><button class="btn primary" id="snap" style="flex:1">Capture</button><button class="btn" id="camClose">Cancel</button></div>' +
+        '<div id="camErr" style="color:var(--tomato);font-size:14px;margin-top:8px"></div></div></div>';
+      const video = $("#cam"); let stream;
+      navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(s => { stream = s; video.srcObject = s; })
+        .catch(() => { $("#camErr").textContent = "Camera access was denied or is unavailable."; });
+      const close = () => { if (stream) stream.getTracks().forEach(t => t.stop()); mount.innerHTML = ""; };
+      $("#camClose").onclick = close;
+      $("#camBg").onclick = e => { if (e.target.id === "camBg") close(); };
+      $("#snap").onclick = () => {
+        if (!video.videoWidth) return;
+        const cv = document.createElement("canvas"); cv.width = video.videoWidth; cv.height = video.videoHeight;
+        cv.getContext("2d").drawImage(video, 0, 0);
+        cv.toBlob(b => { close(); runSingle(new File([b], "camera.jpg", { type: "image/jpeg" })); }, "image/jpeg", .92);
       };
-      return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            {err ? <p className="text-red-500 text-sm py-8 text-center">{err}</p>
-              : <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl bg-black aspect-video object-cover" />}
-            <div className="flex gap-2 mt-3">
-              <button onClick={snap} disabled={!!err} className="flex-1 rounded-lg bg-brand-600 disabled:opacity-40 hover:bg-brand-500 text-white font-semibold py-2.5 transition-colors">Capture</button>
-              <button onClick={onClose} className="rounded-lg border border-slate-300 dark:border-slate-700 px-4 font-semibold">Cancel</button>
-            </div>
-          </div>
-        </div>
-      );
     }
 
-    function Analyzer({ pushHistory, examples = [] }) {
-      const [preview, setPreview] = useState(null);
-      const [result, setResult] = useState(null);
-      const [batch, setBatch] = useState(null);
-      const [status, setStatus] = useState("idle"); // idle | loading | error
-      const [error, setError] = useState(null);
-      const [drag, setDrag] = useState(false);
-      const [camera, setCamera] = useState(false);
-      const inputRef = useRef(null);
-
-      const runSingle = useCallback(async (file) => {
-        setBatch(null); setStatus("loading"); setError(null);
-        setPreview(URL.createObjectURL(file));
-        try {
-          const r = await predictFile(file);
-          setResult(r); setStatus("idle"); pushHistory(r);
-        } catch (e) { setError(e.message); setStatus("error"); }
-      }, [pushHistory]);
-
-      const runBatch = useCallback(async (files) => {
-        setResult(null); setPreview(null); setStatus("loading"); setError(null);
-        const out = [];
-        for (const f of files) {
-          try { const r = await predictFile(f); out.push({ ...r, _url: URL.createObjectURL(f) }); pushHistory(r); }
-          catch (e) { out.push({ error: e.message, image: { filename: f.name } }); }
-          setBatch([...out]);
-        }
-        setStatus("idle");
-      }, [pushHistory]);
-
-      const handleFiles = useCallback((files) => {
-        const arr = [...files].filter(f => f.type.startsWith("image/"));
-        if (!arr.length) return;
-        arr.length === 1 ? runSingle(arr[0]) : runBatch(arr);
-      }, [runSingle, runBatch]);
-
-      const loadExample = async (url) => {
-        const blob = await (await fetch(url)).blob();
-        runSingle(new File([blob], url.split("/").pop(), { type: blob.type || "image/png" }));
-      };
-
-      return (
-        <div className="grid lg:grid-cols-2 gap-6">
-          {camera && <CameraModal onClose={() => setCamera(false)} onCapture={runSingle} />}
-
-          {/* upload */}
-          <Card className="p-5">
-            <div
-              onDragOver={e => { e.preventDefault(); setDrag(true); }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files); }}
-              onClick={() => inputRef.current?.click()}
-              role="button" tabIndex={0}
-              onKeyDown={e => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
-              className={cls("cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors",
-                drag ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10" : "border-slate-300 dark:border-slate-700 hover:border-brand-400")}>
-              {preview && !batch
-                ? <img src={preview} alt="Selected fruit preview" className="mx-auto max-h-56 rounded-lg object-contain" />
-                : <div className="py-6">
-                    <div className="text-4xl mb-3 animate-float">🍎🍌🍊</div>
-                    <div className="font-semibold">Drag &amp; drop a fruit photo</div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">or click to browse · multiple files run as a batch</div>
-                  </div>}
-              <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={e => handleFiles(e.target.files)} />
-            </div>
-
-            <div className="flex flex-wrap gap-2 mt-4">
-              <button onClick={() => inputRef.current?.click()} className="rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold px-4 py-2 transition-colors">Browse files</button>
-              <button onClick={() => setCamera(true)} className="rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold px-4 py-2 transition-colors">📷 Use camera</button>
-            </div>
-
-            {examples.length > 0 && (
-              <div className="mt-5">
-                <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Example test images</div>
-                <div className="flex gap-2 flex-wrap">
-                  {examples.map(url => (
-                    <button key={url} onClick={() => loadExample(url)} className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:ring-2 ring-brand-400 transition">
-                      <img src={url} alt="example fruit" className="w-16 h-16 object-cover" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
-
-          {/* results */}
-          <Card className="p-5 min-h-[420px]">
-            <AnimatePresence mode="wait">
-              {status === "loading" && <motion.div key="l" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><div className="text-xs uppercase tracking-wide text-slate-400 mb-4">Running inference…</div><Skeleton /></motion.div>}
-              {status === "error" && (
-                <motion.div key="e" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="grid place-items-center h-full text-center py-12">
-                  <div>
-                    <div className="text-4xl mb-3">⚠️</div>
-                    <div className="font-semibold text-red-600 dark:text-red-400">Analysis failed</div>
-                    <div className="text-sm text-slate-500 mt-1">{error}</div>
-                  </div>
-                </motion.div>
-              )}
-              {status === "idle" && batch && (
-                <motion.div key="b" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Batch results · {batch.length}</div>
-                    <button onClick={() => { const blob = new Blob([JSON.stringify(batch.map(({_url,...r})=>r),null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="batch-results.json"; a.click(); }}
-                      className="text-xs font-semibold text-brand-600 hover:underline">Export JSON</button>
-                  </div>
-                  <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
-                    {batch.map((b,i) => (
-                      <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-2">
-                        {b._url && <img src={b._url} className="w-11 h-11 rounded-lg object-cover" alt="" />}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold truncate">{b.image?.filename}</div>
-                          {b.error ? <div className="text-xs text-red-500">{b.error}</div>
-                            : <div className="text-xs text-slate-500">{b.latency_ms} ms</div>}
-                        </div>
-                        {!b.error && <Chip tone={isRotten(b.predicted_class) ? "slate" : "brand"}>{isRotten(b.predicted_class) ? "Spoiled" : "Fresh"} · {pct(b.confidence)}</Chip>}
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-              {status === "idle" && !batch && result && <motion.div key="r"><ResultDashboard result={result} preview={preview} /></motion.div>}
-              {status === "idle" && !batch && !result && (
-                <motion.div key="empty" className="grid place-items-center h-full text-center py-12 text-slate-400">
-                  <div>
-                    <div className="text-5xl mb-3 opacity-60">🔬</div>
-                    <div className="font-semibold text-slate-500 dark:text-slate-400">Your diagnostics will appear here</div>
-                    <div className="text-sm mt-1">Upload a photo to run the model.</div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Card>
-        </div>
-      );
+    /* ---------------------------------------------------- shared link banner */
+    function renderShared() {
+      if (!location.hash.startsWith("#r=")) return;
+      let s; try { s = JSON.parse(atob(location.hash.slice(3))); } catch (e) { return; }
+      const slot = $("#sharedSlot");
+      slot.innerHTML = '<div class="card"><div class="mono">Shared result: <b style="text-transform:capitalize">' + esc(s.c) + '</b> // ' + pct(s.p) + ' // ' + s.t + ' ms</div><button id="closeShared">✕</button></div>';
+      $("#closeShared").onclick = () => { slot.innerHTML = ""; history.replaceState(null, "", location.pathname); };
     }
 
-    /* --------------------------------------------------------------- history */
-    function History({ items, onPick }) {
-      if (!items.length) return null;
-      return (
-        <Section id="history" eyebrow="Session" title="Prediction history" lead="Every analysis from this session, kept locally in the browser.">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {items.map((r, i) => (
-              <motion.div key={i} {...reveal} transition={{ duration: .4, delay: i*.03 }}>
-                <Card className="p-4 flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold truncate max-w-[160px]">{r.image?.filename || "image"}</div>
-                    <div className="text-xs text-slate-500 font-mono">{r.latency_ms} ms · {r.device}</div>
-                  </div>
-                  <Chip tone={isRotten(r.predicted_class) ? "slate" : "brand"}>{isRotten(r.predicted_class) ? "Spoiled" : "Fresh"} {pct(r.confidence)}</Chip>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </Section>
-      );
-    }
-
-    /* --------------------------------------------------------- model insights */
-    function ModelInsights({ meta }) {
-      if (!meta) return null;
-      const cards = [
-        ["Architecture", meta.architecture, "🧠"],
-        ["Parameters", `${meta.params.toLocaleString()}`, "⚙️"],
-        ["Test accuracy (held-out)", `${pct(meta.accuracy.test)} (${meta.accuracy.test_correct}/${meta.accuracy.test_total})`, "✅"],
-        ["Test 95% CI", ciText(meta.accuracy.test_ci95), "📐"],
-        ["Validation accuracy", pct(meta.accuracy.val), "🔎"],
-        ["Train accuracy", pct(meta.accuracy.train), "📈"],
-        ["Training images", meta.dataset.train_images.toLocaleString(), "🗂️"],
-        ["Test images", meta.dataset.test_images?.toLocaleString(), "🧪"],
-      ];
-      return (
-        <Section id="model" eyebrow="ML dashboard" title="Model insights"
-          lead="These numbers come straight from the trained model via evaluate.py, not typed in by hand. Test accuracy is measured on a held-out split that never touches training or checkpoint selection, so it reflects generalization, not memorization. The test set is small (n=44), so the 95% confidence interval is wide.">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {cards.map(([l,v,e]) => (
-              <motion.div key={l} {...reveal}><Card className="p-4">
-                <div className="text-xl">{e}</div>
-                <div className="mt-2 text-lg font-extrabold font-mono break-words">{v}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">{l}</div>
-              </Card></motion.div>
-            ))}
-          </div>
-          <motion.div {...reveal} className="mt-6">
-            <Card className="p-6">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-4">Forward pass</div>
-              <div className="flex flex-wrap items-stretch gap-2">
-                {meta.layers.map((layer, i) => (
-                  <React.Fragment key={i}>
-                    <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-mono">{layer}</div>
-                    {i < meta.layers.length - 1 && <div className="self-center text-slate-400">→</div>}
-                  </React.Fragment>
-                ))}
-              </div>
-              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-                Trained on the <span className="font-semibold">{meta.dataset.source}</span> dataset. The compact design keeps the model at
-                ~{(meta.params/1000).toFixed(1)}k parameters so it trains in minutes and runs in real time on CPU.
-              </p>
-            </Card>
-          </motion.div>
-        </Section>
-      );
-    }
-
-    /* ----------------------------------------------------------- engineering */
-    function Engineering() {
-      return (
-        <Section id="tech" eyebrow="Under the hood" title="Engineering &amp; deployment"
-          lead="The whole path from raw photos to a live model: training, evaluation, export, and in-browser inference.">
-          <motion.div {...reveal} className="mb-8">
-            <Card className="p-6">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-4">ML pipeline</div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {PIPELINE.map(([s,d,t], i) => (
-                  <div key={s} className="relative rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-                    <div className="text-xs font-mono text-brand-600 dark:text-brand-400">0{i+1}</div>
-                    <div className="font-semibold mt-1">{s}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{d}</div>
-                    <div className="mt-2"><Chip>{t}</Chip></div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </motion.div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <motion.div {...reveal}><Card className="p-6">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Tech stack</div>
-              <div className="space-y-2">
-                {STACK.map(([n,d]) => (
-                  <div key={n} className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 last:border-0">
-                    <span className="font-semibold font-mono text-sm">{n}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{d}</span>
-                  </div>
-                ))}
-              </div>
-            </Card></motion.div>
-            <motion.div {...reveal}><Card className="p-6">
-              <div className="text-xs uppercase tracking-wide text-slate-400 mb-3">Deployment architecture</div>
-              <pre className="text-xs font-mono leading-relaxed text-slate-600 dark:text-slate-300 overflow-auto">{
-`Static SPA (Vercel CDN)
-   │  canvas → Float32 tensor [1,3,64,64]
-   ▼
-onnxruntime-web (WebAssembly)
-   │  TinyFreshNet.onnx · single forward pass
-   ▼
-softmax → { class, confidence, probs, latency }`}</pre>
-              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully in the browser, so the demo is always up with no cold starts. (There's also a FastAPI server in the repo if you'd rather run it on a machine.)</p>
-            </Card></motion.div>
-          </div>
-        </Section>
-      );
-    }
-
-    /* ------------------------------------------------------------ benchmarks */
-    function Benchmarks({ meta, lastLatency }) {
-      const rows = meta ? [
-        [`Test accuracy (held-out, ${meta.accuracy.test_correct}/${meta.accuracy.test_total})`, `${pct(meta.accuracy.test)} · 95% CI ${ciText(meta.accuracy.test_ci95)}`],
-        ["Validation accuracy", pct(meta.accuracy.val)],
-        ["Train accuracy", pct(meta.accuracy.train)],
-        ["Parameters", meta.params.toLocaleString()],
-        ["Training set", `${meta.dataset.train_images} images`],
-        ["Test set", `${meta.dataset.test_images} images`],
-        ["Measured latency", lastLatency ? `${lastLatency} ms` : "run an analysis"],
-        ["Inference device", meta.inference_device?.toUpperCase()],
-      ] : [];
-      return (
-        <Section id="benchmarks" eyebrow="Numbers" title="Performance benchmarks"
-          lead="The real numbers for the model that's running, measured from its dataset.">
-          <motion.div {...reveal}>
-            <Card className="overflow-hidden">
-              <table className="w-full text-sm">
-                <tbody>
-                  {rows.map(([k,v], i) => (
-                    <tr key={k} className={cls(i % 2 && "bg-slate-50 dark:bg-slate-800/40")}>
-                      <td className="px-5 py-3 font-medium text-slate-600 dark:text-slate-300">{k}</td>
-                      <td className="px-5 py-3 text-right font-mono font-semibold">{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          </motion.div>
-        </Section>
-      );
-    }
-
-    /* -------------------------------------------------------------- how + faq */
-    function HowItWorks() {
-      const steps = [
-        ["Upload or capture", "Drag in, browse, or snap a photo. Everything stays on the host."],
-        ["On-device inference", "The image is normalized and passed through TinyFreshNet in a single forward pass."],
-        ["Diagnostics", "Get a fresh/spoiled verdict with confidence, probabilities, latency, and a recommendation."],
-      ];
-      return (
-        <Section id="how" eyebrow="Workflow" title="How it works" lead="Three steps, and you get an answer right away.">
-          <div className="grid md:grid-cols-3 gap-4">
-            {steps.map(([t,d], i) => (
-              <motion.div key={t} {...reveal} transition={{ duration:.5, delay:i*.08 }}>
-                <Card className="p-6 h-full">
-                  <div className="w-9 h-9 grid place-items-center rounded-lg bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 font-extrabold font-mono">{i+1}</div>
-                  <h3 className="mt-3 font-bold">{t}</h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{d}</p>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </Section>
-      );
-    }
-
-    function Privacy() {
-      const items = [
-        ["🔒","Never uploaded","Your photo is decoded and analyzed in-browser; the pixels never leave your device."],
-        ["📡","No backend","Inference runs in WebAssembly on your machine, so there's no server to send data to."],
-        ["🧾","Clear output","Every prediction shows its full probability split and timing, so you can see exactly what it decided."],
-      ];
-      return (
-        <Section id="privacy" eyebrow="Trust" title="Privacy &amp; security" lead="It's easy to see where your photo goes, because it doesn't go anywhere.">
-          <div className="grid md:grid-cols-3 gap-4">
-            {items.map(([e,t,d]) => (
-              <motion.div key={t} {...reveal}><Card className="p-6 h-full">
-                <div className="text-2xl">{e}</div>
-                <h3 className="mt-3 font-bold">{t}</h3>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{d}</p>
-              </Card></motion.div>
-            ))}
-          </div>
-        </Section>
-      );
-    }
-
-    function Faq() {
-      const [open, setOpen] = useState(0);
-      return (
-        <Section id="faq" eyebrow="Questions" title="FAQ">
-          <div className="max-w-3xl mx-auto space-y-3">
-            {FAQ.map(([q,a], i) => (
-              <Card key={i} className="overflow-hidden">
-                <button onClick={() => setOpen(open === i ? -1 : i)} className="w-full flex items-center justify-between text-left px-5 py-4 font-semibold">
-                  {q}<span className="text-slate-400 ml-4">{open === i ? "▾" : "▸"}</span>
-                </button>
-                <AnimatePresence>
-                  {open === i && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: .25 }}>
-                      <p className="px-5 pb-4 text-sm text-slate-600 dark:text-slate-300">{a}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </Card>
-            ))}
-          </div>
-        </Section>
-      );
-    }
-
-    function SharedBanner({ shared, onClose }) {
-      if (!shared) return null;
-      return (
-        <div className="max-w-6xl mx-auto px-5 pt-4">
-          <Card className="p-4 flex items-center justify-between bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-500/30">
-            <div className="text-sm">🔗 Shared result: <span className="font-bold capitalize">{shared.c}</span> · {pct(shared.p)} confidence · {shared.t} ms</div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
-          </Card>
-        </div>
-      );
-    }
-
-    function Footer() {
-      return (
-        <footer className="border-t border-slate-200 dark:border-slate-800 mt-10">
-          <div className="max-w-6xl mx-auto px-5 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200"><span>🍃</span> FreshCheck</div>
-            <div className="font-mono text-xs">TinyFreshNet · PyTorch · FastAPI · React · Tailwind · Framer Motion</div>
-          </div>
-        </footer>
-      );
-    }
-
-    /* ----------------------------------------------------------------- app */
-    function App() {
-      const [dark, setDark] = useState(() => localStorage.theme ? localStorage.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches);
-      const [meta, setMeta] = useState(null);
-      const [history, setHistory] = useState([]);
-      const [shared, setShared] = useState(null);
-
-      useEffect(() => {
-        document.documentElement.classList.toggle("dark", dark);
-        localStorage.theme = dark ? "dark" : "light";
-      }, [dark]);
-
-      useEffect(() => {
-        fetch("meta.json").then(r => r.json()).then(m => {
-          if (Array.isArray(m.classes)) CLASSES = m.classes;
-          setMeta(m);
-        }).catch(() => {});
-      }, []);
-
-      useEffect(() => {
-        if (location.hash.startsWith("#r=")) {
-          try { setShared(JSON.parse(atob(location.hash.slice(3)))); } catch {}
-        }
-      }, []);
-
-      const pushHistory = useCallback((r) => setHistory(h => [r, ...h].slice(0, 12)), []);
-      const lastLatency = history[0]?.latency_ms;
-
-      return (
-        <MotionConfig reducedMotion="user">
-          <Nav dark={dark} setDark={setDark} />
-          <SharedBanner shared={shared} onClose={() => { setShared(null); history.replaceState(null,"",location.pathname); }} />
-          <main>
-            <Hero meta={meta} />
-            <Section id="analyze" eyebrow="Live demo" title="Analyze your fruit"
-              lead="Upload, snap a photo, or pick an example. The model runs in your browser and shows results right away.">
-              <Analyzer pushHistory={pushHistory} examples={meta?.examples || []} />
-            </Section>
-            <History items={history} onPick={() => {}} />
-            <ModelInsights meta={meta} />
-            <Engineering />
-            <Benchmarks meta={meta} lastLatency={lastLatency} />
-            <HowItWorks />
-            <Privacy />
-            <Faq />
-          </main>
-          <Footer />
-        </MotionConfig>
-      );
-    }
-
-    createRoot(document.getElementById("root")).render(<App />);
+    /* ---------------------------------------------------- boot */
+    renderPipeline(); renderStack(); renderFaq(); renderShared();
+    fetch("meta.json").then(r => r.json()).then(m => { window._meta = m; renderMeta(m); })
+      .catch(() => { window._meta = { accuracy: {}, dataset: {} }; renderReceipt(window._meta); });
+  })();
   </script>
 </body>
 </html>

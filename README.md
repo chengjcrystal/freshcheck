@@ -45,10 +45,12 @@ deployed demo needs none of it.)
 | `make_sample_data.py` | Generate synthetic data to test the pipeline |
 | `prepare_real_data.py` | Convert the Kaggle dataset into the expected layout |
 
-## The product: FreshCheck (React + FastAPI)
+## The product: FreshCheck (vanilla JS + FastAPI)
 
-The polished web app is a single-page **React 18 + Tailwind + Framer Motion**
-frontend served by a **FastAPI** backend that runs the PyTorch model.
+The web app is a single static page built with **hand-written HTML, CSS, and
+vanilla JavaScript**, no framework and no build step. It runs the model in the
+browser with **onnxruntime-web**, so it needs no backend at all. A **FastAPI**
+server is also included if you would rather run inference on a machine.
 
 ```bash
 pip install -r requirements.txt
@@ -62,12 +64,14 @@ Open **http://127.0.0.1:8000**. Endpoints:
 - `POST /api/predict`: image → predicted class, confidence, full probabilities, inference latency, image metadata
 - `GET /api/examples`: sample test images
 
-The frontend (`web/index.html`) loads React/Framer Motion via import-map CDN and
-Tailwind via CDN, so it runs with **no `npm install`**, handy when disk is tight.
-Features: drag-and-drop + camera capture + example images, animated confidence
-gauge and probability bars, an ML "Model Insights" dashboard, batch analysis,
-prediction history, export JSON / download report / shareable link, dark mode,
-and skeleton/empty/error states.
+The frontend (`web/index.html`) pulls in only **onnxruntime-web** from a CDN plus
+two web fonts. Everything else is inline, so there's no `npm install` and the
+page stays light. Design is a neo-brutalist produce-market look (thick ink
+borders, hard offset shadows, acid green on cream, oversized Archivo type, a
+price-burst accuracy sticker and a paper-receipt stats panel). Features:
+drag-and-drop and camera capture, example images, an animated confidence gauge
+and probability bars, a model-insights dashboard, batch analysis, copy JSON /
+download report / shareable link, dark mode, and empty/loading/error states.
 
 ### Simpler Gradio version
 
