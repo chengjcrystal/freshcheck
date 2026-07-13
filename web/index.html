@@ -312,8 +312,8 @@
     .qa button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 16px; text-align: left; background: none; border: 0; padding: 16px 18px; font-weight: 800; font-size: 17px; color: var(--ink); }
     .qa .plus { font-family: "Space Mono", monospace; font-size: 22px; flex-shrink: 0; }
     .qa .ans { max-height: 0; overflow: hidden; transition: max-height .28s ease; }
-    .qa .ans p { padding: 0 18px 18px; color: var(--muted); font-size: 15.5px; }
-    .qa.open .ans { max-height: 460px; }
+    .qa .ans p { padding: 16px 18px 18px; color: var(--muted); font-size: 15.5px; }
+    .qa.open .ans { max-height: 520px; }
     .qa.open button { background: var(--acid); color: #171610; }
 
     /* ---------------------------------------------------------- shared banner + footer */
@@ -326,7 +326,7 @@
     footer.foot .fin { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 26px 0; flex-wrap: wrap; }
     footer.foot .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; }
     footer.foot .brand .mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--acid); color: #171610; border: 2px solid var(--acid); transform: rotate(-4deg); }
-    footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; }
+    footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
 
     /* ---------------------------------------------------------- responsive */
     @media (max-width: 900px) {
@@ -349,6 +349,10 @@
       .result-mid { grid-template-columns: 1fr; justify-items: center; text-align: center; }
       .sec-head { flex-direction: column; align-items: flex-start; }
       .hero h1 { font-size: clamp(42px, 13vw, 72px); }
+    }
+    @media (max-width: 760px) {
+      footer.foot .fin { flex-direction: column; align-items: flex-start; gap: 12px; }
+      footer.foot .stk { white-space: normal; line-height: 1.7; }
     }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
@@ -453,7 +457,7 @@
       <div class="sec-head">
         <div>
           <span class="eyebrow">The receipt</span>
-          <h2>Numbers for the model that's running</h2>
+          <h2>By the numbers</h2>
           <p class="lead">Measured straight from the trained model by evaluate.py, not typed in. Test accuracy is from a held-out split the model never saw while training or picking its checkpoint, so it shows how it does on new fruit, not what it memorized. The set is small (44 images), so the 95% interval is wide.</p>
         </div>
       </div>
