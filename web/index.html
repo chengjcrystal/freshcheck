@@ -123,10 +123,11 @@
     .bar-actions { display: flex; align-items: center; gap: 10px; }
     .toggle {
       width: 40px; height: 40px; display: grid; place-items: center;
-      background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius);
+      background: var(--panel); color: var(--ink); border: var(--b) solid var(--line); border-radius: var(--radius);
       box-shadow: 3px 3px 0 var(--shadow); font-size: 16px;
       transition: transform .08s, box-shadow .08s;
     }
+    .toggle svg { display: block; }
     .toggle:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--shadow); }
 
     /* ---------------------------------------------------------- hero */
@@ -359,8 +360,8 @@
       <a class="logo" href="#top"><span class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#171610" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 6"/></svg></span> FreshCheck</a>
       <nav class="links">
         <a href="#analyze">Check</a>
-        <a href="#model">Model</a>
         <a href="#numbers">Numbers</a>
+        <a href="#engineering">Build</a>
         <a href="#faq">FAQ</a>
       </nav>
       <div class="bar-actions">
@@ -446,20 +447,26 @@
     </div>
   </section>
 
-  <!-- ============================================================ model insights -->
-  <section id="model">
+  <!-- ============================================================ numbers / receipt -->
+  <section id="numbers">
     <div class="wrap">
       <div class="sec-head">
         <div>
-          <span class="eyebrow">What's under the hood</span>
-          <h2>The model, by the numbers</h2>
-          <p class="lead">Everything here is measured straight from the trained model by evaluate.py, not typed in. Test accuracy comes from a held-out split the model never saw while training or picking its checkpoint, so it shows how it does on new fruit, not what it memorized. The test set is small (44 images), so the 95% confidence interval is wide.</p>
+          <span class="eyebrow">The receipt</span>
+          <h2>Numbers for the model that's running</h2>
+          <p class="lead">Measured straight from the trained model by evaluate.py, not typed in. Test accuracy is from a held-out split the model never saw while training or picking its checkpoint, so it shows how it does on new fruit, not what it memorized. The set is small (44 images), so the 95% interval is wide.</p>
         </div>
       </div>
-      <div class="cards" id="insightCards"></div>
+      <div class="receipt-wrap">
+        <div class="receipt" id="receipt"></div>
+        <div class="receipt-say">
+          <h3>Honest, not impressive-sounding.</h3>
+          <p>The headline is held-out test accuracy with its confidence interval, not the training score. Validation reads high because it picks the checkpoint, so it stays off to the side rather than getting sold as the result.</p>
+        </div>
+      </div>
       <div class="forward">
         <div class="card" style="padding:20px">
-          <div class="eyebrow" style="margin-bottom:14px">Forward pass</div>
+          <div class="eyebrow" style="margin-bottom:14px">Architecture · forward pass</div>
           <div class="layers" id="layers"></div>
           <p class="note" id="forwardNote"></p>
         </div>
@@ -494,43 +501,6 @@ onnxruntime-web (WebAssembly)
 softmax -> { class, confidence, timing }</pre>
           <p class="note">No backend. The model is trained in PyTorch, exported to ONNX, and runs fully in the browser, so the demo stays up with no cold starts. A FastAPI server is in the repo if you would rather run it on a machine.</p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================ numbers / receipt -->
-  <section id="numbers">
-    <div class="wrap">
-      <div class="sec-head">
-        <div>
-          <span class="eyebrow">The receipt</span>
-          <h2>Numbers for the model that's running</h2>
-          <p class="lead">Pulled from the shipped model and its dataset. Latency is whatever your machine just clocked.</p>
-        </div>
-      </div>
-      <div class="receipt-wrap">
-        <div class="receipt" id="receipt"></div>
-        <div class="receipt-say">
-          <h3>Honest, not impressive-sounding.</h3>
-          <p>The headline is held-out test accuracy with its confidence interval, not the training score. Validation reads high because it picks the checkpoint, so it is kept off to the side rather than sold as the result.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================ how it works -->
-  <section id="how">
-    <div class="wrap">
-      <div class="sec-head">
-        <div>
-          <span class="eyebrow">Three steps</span>
-          <h2>How it works</h2>
-        </div>
-      </div>
-      <div class="triple">
-        <div class="blok"><div class="no">1</div><h3>Add a photo</h3><p>Drag one in, browse, or use your camera. It all stays on your device.</p></div>
-        <div class="blok"><div class="no">2</div><h3>Run it locally</h3><p>The photo gets normalized and passed through TinyFreshNet once.</p></div>
-        <div class="blok"><div class="no">3</div><h3>Read the verdict</h3><p>Fresh or rotten, with confidence, the full split, and timing.</p></div>
       </div>
     </div>
   </section>
@@ -742,28 +712,6 @@ softmax -> { class, confidence, timing }</pre>
         const s = el("div", "sticker" + (i < 2 ? " pin" : ""));
         s.innerHTML = '<div class="v">' + v + '</div><div class="k">' + k + '</div>';
         stk.appendChild(s);
-      });
-
-      // insight cards
-      const cards = $("#insightCards");
-      const ci = a.test_ci95;
-      const items = [
-        ["ic hi", "Test accuracy (held-out)", a.test != null ? pct(a.test) : "…", a.test_correct != null ? a.test_correct + " / " + a.test_total + " correct" : "", false, false],
-        ["ic", "95% conf. interval", "", ci ? ciText(ci) : "", true, false],
-        ["ic span2", "Architecture", meta.architecture || "TinyFreshNet", "", false, true],
-        ["ic", "Parameters", meta.params ? meta.params.toLocaleString() : "…", "", false, false],
-        ["ic", "Validation acc", a.val != null ? pct(a.val) : "…", "checkpoint pick", false, false],
-        ["ic", "Train acc", a.train != null ? pct(a.train) : "…", "", false, false],
-        ["ic", "Train images", d.train_images != null ? String(d.train_images) : "…", "", false, false],
-        ["ic", "Test images", d.test_images != null ? String(d.test_images) : "…", "never seen in training", false, false],
-      ];
-      items.forEach(([cls, k, v, sub, ciBig, small]) => {
-        const c = el("div", cls);
-        const vHtml = ciBig
-          ? '<div class="v small">' + esc(sub) + '</div>'
-          : '<div class="v' + (small ? " small" : "") + '">' + esc(v) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '');
-        c.innerHTML = '<div class="k">' + esc(k) + '</div>' + vHtml;
-        cards.appendChild(c);
       });
 
       // forward-pass layers
