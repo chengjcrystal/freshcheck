@@ -173,6 +173,11 @@
     .drop.hot { background: var(--acid); transform: rotate(-.5deg); }
     .drop .zone { padding: 30px 8px; cursor: pointer; }
     .drop .fruit { font-size: 46px; letter-spacing: 6px; }
+    .drop .dropicn { color: var(--ink); }
+    .drop .dropicn svg { display: block; margin: 0 auto; }
+    .result .scaleicn { color: var(--muted); }
+    .result .scaleicn svg { display: block; margin: 0 auto; }
+    .logo .mark svg, footer.foot .brand .mark svg { display: block; }
     .drop .big { font-weight: 900; font-size: 22px; margin-top: 14px; }
     .drop .small { color: var(--muted); font-size: 14px; margin-top: 6px; }
     .drop img.prev { max-height: 240px; margin: 0 auto; border: var(--b) solid var(--line); border-radius: var(--radius); }
@@ -349,7 +354,7 @@
   <!-- ============================================================ header -->
   <header class="bar">
     <div class="wrap bar-in">
-      <a class="logo" href="#top"><span class="mark">◵</span> FreshCheck</a>
+      <a class="logo" href="#top"><span class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#171610" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 6"/></svg></span> FreshCheck</a>
       <nav class="links">
         <a href="#analyze">Check</a>
         <a href="#model">Model</a>
@@ -410,7 +415,7 @@
         <div class="card drop" id="drop">
           <div class="zone" id="zone">
             <div id="dropInner">
-              <div class="fruit">🍌</div>
+              <div class="dropicn"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="1.5"/><circle cx="8.5" cy="10" r="1.7"/><path d="M3 16l5-4 4 3 3-2.5 6 4.5"/></svg></div>
               <div class="big">Drag a fruit photo here</div>
               <div class="small">or tap to browse. Drop several and they run as a batch.</div>
             </div>
@@ -429,7 +434,7 @@
         <div class="card result" id="result">
           <div class="placeholder" id="placeholder">
             <div>
-              <div class="scale">⚖️</div>
+              <div class="scaleicn"><svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M8 19.5h8"/><circle cx="12" cy="3.6" r="1"/><path d="M4 7.5h16"/><path d="M4.5 7.5L1.7 13M4.5 7.5L7.3 13M1.4 13a3.1 3.1 0 0 0 6.2 0"/><path d="M19.5 7.5L16.7 13M19.5 7.5L22.3 13M16.4 13a3.1 3.1 0 0 0 6.2 0"/></svg></div>
               <div class="t">Nothing to grade yet</div>
               <div class="small" style="color:var(--muted);margin-top:6px">Add a photo and the model gets to work.</div>
             </div>
@@ -562,7 +567,7 @@ softmax -> { class, confidence, timing }</pre>
   <!-- ============================================================ footer -->
   <footer class="foot">
     <div class="wrap fin">
-      <div class="brand"><span class="mark">◵</span> FreshCheck</div>
+      <div class="brand"><span class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#171610" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 6"/></svg></span> FreshCheck</div>
       <div class="stk">TinyFreshNet · PyTorch · ONNX · onnxruntime-web</div>
     </div>
   </footer>
@@ -906,7 +911,7 @@ softmax -> { class, confidence, timing }</pre>
       catch (e) { showError(e.message); }
     }
     async function runBatch(files) {
-      inner.innerHTML = '<div class="fruit">🧺</div><div class="big">' + files.length + ' photos</div><div class="small">running as a batch</div>';
+      inner.innerHTML = '<div class="big">' + files.length + ' photos</div><div class="small">running as a batch</div>';
       showSpinner();
       const out = [];
       for (const f of files) {
