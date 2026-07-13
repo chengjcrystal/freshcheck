@@ -175,7 +175,6 @@
     }
     .drop.hot { background: var(--acid); transform: rotate(-.5deg); }
     .drop .zone { padding: 30px 8px; cursor: pointer; }
-    .drop .fruit { font-size: 46px; letter-spacing: 6px; }
     .drop .dropicn { color: var(--ink); }
     .drop .dropicn svg { display: block; margin: 0 auto; }
     .result .scaleicn { color: var(--muted); }
@@ -239,16 +238,6 @@
     .spinner .blocks i { width: 14px; height: 14px; background: var(--acid); border: 2px solid var(--line); animation: pop 1s infinite; }
     .spinner .blocks i:nth-child(2){ animation-delay: .15s; } .spinner .blocks i:nth-child(3){ animation-delay:.3s; }
     @keyframes pop { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-8px);} }
-
-    /* ---------------------------------------------------------- insight cards */
-    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding-bottom: 30px; }
-    .ic { background: var(--panel); border: var(--b) solid var(--line); border-radius: var(--radius); box-shadow: 5px 5px 0 var(--shadow); padding: 16px; }
-    .ic.span2 { grid-column: span 2; }
-    .ic .k { font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-    .ic .v { font-weight: 900; font-size: 26px; letter-spacing: -.02em; margin-top: 8px; word-break: break-word; }
-    .ic .v.small { font-size: 16px; font-weight: 800; line-height: 1.25; }
-    .ic .sub { font-family: "Space Mono", monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .ic.hi { background: var(--acid); color: #171610; } .ic.hi .k, .ic.hi .sub { color: #2c2a12; }
 
     .forward { padding-bottom: 52px; }
     .forward .layers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -323,7 +312,7 @@
     .shared button { background: none; border: 0; font-weight: 900; font-size: 18px; cursor: pointer; color: #171610; }
 
     footer.foot { background: var(--ink); color: var(--bg); }
-    footer.foot .fin { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 26px 0; flex-wrap: wrap; }
+    footer.foot .fin { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 26px 22px; flex-wrap: wrap; }
     footer.foot .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; }
     footer.foot .brand .mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--acid); color: #171610; border: 2px solid var(--acid); transform: rotate(-4deg); }
     footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
@@ -333,8 +322,6 @@
       .hero-grid { grid-template-columns: 1fr; gap: 24px; }
       .burst { max-width: 220px; margin: 0; transform: rotate(-3deg); }
       .analyze-grid, .eng2, .receipt-wrap { grid-template-columns: 1fr; }
-      .cards { grid-template-columns: repeat(2, 1fr); }
-      .ic.span2 { grid-column: span 2; }
       .pipeline { grid-template-columns: repeat(2, 1fr); }
       .triple { grid-template-columns: 1fr; }
       .receipt { margin: 0 auto; transform: rotate(-1deg); }
@@ -342,8 +329,6 @@
     }
     @media (max-width: 560px) {
       body { font-size: 16px; }
-      .cards { grid-template-columns: 1fr; }
-      .ic.span2 { grid-column: span 1; }
       .metrics { grid-template-columns: repeat(2, 1fr); }
       .notes { grid-template-columns: 1fr; }
       .result-mid { grid-template-columns: 1fr; justify-items: center; text-align: center; }
