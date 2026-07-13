@@ -196,7 +196,7 @@
     .result .placeholder .scale { font-size: 52px; }
     .result .placeholder .t { font-weight: 900; font-size: 20px; color: var(--ink); margin-top: 10px; }
 
-    .verdict { display: flex; align-items: center; gap: 16px; border: var(--b) solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .verdict { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; border: var(--b) solid var(--line); border-radius: var(--radius); padding: 16px; }
     .verdict.fresh { background: var(--acid); color: #171610; }
     .verdict.rotten { background: var(--tomato); color: #fff; }
     .verdict .tag { font-size: 40px; font-weight: 900; letter-spacing: -.03em; line-height: .9; }
@@ -757,13 +757,28 @@ softmax -> { class, confidence, timing }</pre>
 
     function verdictView(res) {
       const rotten = isRotten(res.predicted_class);
-      const rec = rotten
-        ? "I'd toss it. There's a lot of the dark, bruised look the model ties to spoilage."
-        : "Good to eat. Keep it somewhere cool and dry and it lasts longer.";
+      const conf = res.confidence;
+      // four verdicts by how sure the model is (confidence runs 50-100%),
+      // so a borderline call reads as borderline instead of a hard fresh/rotten
+      const sure = conf >= 0.75;
+      let tag, rec;
+      if (!rotten && sure) {
+        tag = "FRESH";
+        rec = "Good to eat. Even color and firm-looking skin. Keep it somewhere cool and dry and it'll last.";
+      } else if (!rotten && !sure) {
+        tag = "STILL OK";
+        rec = "Leaning fresh, but it's a close call. Might be a bit soft or just starting to spot. Eat it in the next day or two.";
+      } else if (rotten && !sure) {
+        tag = "GOING OFF";
+        rec = "Leaning rotten, but not a sure thing. Probably some mushy spots or browning setting in. Give it a look before you eat it.";
+      } else {
+        tag = "ROTTEN";
+        rec = "I'd toss it. Lots of the dark, bruised look the model ties to spoilage.";
+      }
       const why = rotten
         ? "The model mostly goes on color and texture. Big patches of dark, dull surface usually mean bruising or rot."
         : "Even color, smooth skin, not much dark spotting. That's what the model reads as fresh.";
-      const conf = res.confidence, C = 2 * Math.PI * 52;
+      const C = 2 * Math.PI * 52;
       const bars = res.probabilities.map(p => {
         const rr = isRotten(p.label);
         return '<div class="row"><div class="top"><span style="text-transform:capitalize">' + esc(p.label) + '</span><span class="mono">' + pct(p.prob) + '</span></div>' +
@@ -772,7 +787,7 @@ softmax -> { class, confidence, timing }</pre>
 
       const html =
         '<div class="verdict ' + (rotten ? "rotten" : "fresh") + '">' +
-          '<div class="tag">' + (rotten ? "ROTTEN" : "FRESH") + '</div>' +
+          '<div class="tag">' + tag + '</div>' +
           '<div class="meta">' + pct(res.confidence) + ' sure // ' + res.latency_ms + ' ms</div>' +
         '</div>' +
         '<div class="result-mid">' +
@@ -809,7 +824,7 @@ softmax -> { class, confidence, timing }</pre>
       const report = JSON.stringify(res, null, 2);
       resultBox.querySelector('[data-act="copy"]').onclick = () => navigator.clipboard && navigator.clipboard.writeText(report);
       resultBox.querySelector('[data-act="download"]').onclick = () => {
-        const txt = "FreshCheck report\n=================\n\nVerdict    : " + res.predicted_class.toUpperCase() +
+        const txt = "FreshCheck report\n=================\n\nVerdict    : " + tag +
           "\nConfidence : " + pct(res.confidence) + "\nLatency    : " + res.latency_ms + " ms (" + res.device + ")\n" +
           "Image      : " + res.image.width + "x" + res.image.height + ", " + bytes(res.image.bytes) + "\n\nProbabilities:\n" +
           res.probabilities.map(p => "  " + p.label.padEnd(8) + " " + pct(p.prob)).join("\n") + "\n\n" + rec + "\n\nRaw JSON:\n" + report + "\n";
