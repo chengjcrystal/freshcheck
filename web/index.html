@@ -99,7 +99,7 @@
     ];
     const PIPELINE = [
       ["Train", "TinyFreshNet on fruit photos", "PyTorch"],
-      ["Evaluate", "Honest train/val accuracy", "PyTorch"],
+      ["Evaluate", "Held-out test accuracy", "PyTorch"],
       ["Export", "Self-contained model graph", "ONNX"],
       ["Deploy", "Static bundle, zero servers", "Vercel"],
       ["Infer", "WASM forward pass in browser", "onnxruntime-web"],
@@ -119,8 +119,8 @@
        "No. The image is read and analyzed entirely inside your browser using WebAssembly. The pixels never leave your device, because there's no server to send them to."],
       ["How big is the model?",
        "TinyFreshNet has about 24,000 parameters: three small convolutional blocks and a linear layer. It's kept small on purpose, so it trains in a few minutes and runs instantly."],
-      ["Why is validation accuracy so high?",
-       "The model was trained on a banana fresh/rotten dataset (434 training and 76 validation images). The score is real for bananas, but it isn't a claim about every fruit. The point of the project is the pipeline and how it's deployed, which carry over to bigger datasets."],
+      ["How accurate is it, really?",
+       "97.7% on a held-out test set: 43 of 44 images it never saw during training or checkpoint selection, with a 95% confidence interval of 88.2% to 99.6%. The test set is small (n=44), so that interval is wide. The source data had heavy duplication between its train and test folders, so it was de-duplicated down to 300 unique banana images and split group-aware into train/val/test, keeping near-duplicate frames on the same side. That's why this number is believable rather than a suspicious 100%. It's a real result for bananas on a small set, not a claim about every fruit."],
       ["Can it handle other fruits?",
        "The pipeline is fruit-agnostic. Swap in a larger multi-fruit dataset, retrain with the same scripts, re-export to ONNX, and the same UI picks up the new model and its metrics automatically."],
       ["How is latency measured?",
@@ -129,6 +129,7 @@
 
     /* --------------------------------------------------------------- helpers */
     const pct = (x) => `${(x * 100).toFixed(1)}%`;
+    const ciText = (ci) => ci ? `${pct(ci[0])}–${pct(ci[1])}` : "";
     const bytes = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(2)} MB`;
     const cls = (...a) => a.filter(Boolean).join(" ");
     const isRotten = (c) => /rotten|bad|spoil/i.test(c);
@@ -262,9 +263,10 @@
     /* ----------------------------------------------------------------- hero */
     function Hero({ meta }) {
       const stats = [
-        ["Validation accuracy", meta ? pct(meta.accuracy.val) : "…"],
-        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "…"],
-        ["Inference", "in-browser"],
+        ["Test accuracy (held-out)", meta ? pct(meta.accuracy.test) : "…",
+         meta ? `95% CI ${ciText(meta.accuracy.test_ci95)}` : ""],
+        ["Model parameters", meta ? `${(meta.params/1000).toFixed(1)}k` : "…", ""],
+        ["Inference", "in-browser", ""],
       ];
       return (
         <div id="top" className="grid-bg border-b border-slate-200/60 dark:border-slate-800/60">
@@ -293,10 +295,11 @@
 
             <motion.div initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.6,delay:.3}}
               className="mt-14 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-              {stats.map(([l,v]) => (
+              {stats.map(([l,v,sub]) => (
                 <Card key={l} className="py-5 px-3">
                   <div className="text-2xl sm:text-3xl font-extrabold grad-text font-mono">{v}</div>
                   <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">{l}</div>
+                  {sub && <div className="mt-0.5 text-[10px] font-mono text-slate-400">{sub}</div>}
                 </Card>
               ))}
             </motion.div>
@@ -658,16 +661,16 @@
       const cards = [
         ["Architecture", meta.architecture, "🧠"],
         ["Parameters", `${meta.params.toLocaleString()}`, "⚙️"],
+        ["Test accuracy (held-out)", `${pct(meta.accuracy.test)} (${meta.accuracy.test_correct}/${meta.accuracy.test_total})`, "✅"],
+        ["Test 95% CI", ciText(meta.accuracy.test_ci95), "📐"],
+        ["Validation accuracy", pct(meta.accuracy.val), "🔎"],
         ["Train accuracy", pct(meta.accuracy.train), "📈"],
-        ["Validation accuracy", pct(meta.accuracy.val), "✅"],
         ["Training images", meta.dataset.train_images.toLocaleString(), "🗂️"],
-        ["Validation images", meta.dataset.val_images.toLocaleString(), "🧪"],
-        ["Inference device", meta.inference_device?.toUpperCase(), "💻"],
-        ["Input size", `${meta.img_size}×${meta.img_size}`, "🖼️"],
+        ["Test images", meta.dataset.test_images?.toLocaleString(), "🧪"],
       ];
       return (
         <Section id="model" eyebrow="ML dashboard" title="Model insights"
-          lead="These numbers come straight from the trained model via evaluate.py, not typed in by hand.">
+          lead="These numbers come straight from the trained model via evaluate.py, not typed in by hand. Test accuracy is measured on a held-out split that never touches training or checkpoint selection, so it reflects generalization, not memorization. The test set is small (n=44), so the 95% confidence interval is wide.">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {cards.map(([l,v,e]) => (
               <motion.div key={l} {...reveal}><Card className="p-4">
@@ -750,11 +753,12 @@ softmax → { class, confidence, probs, latency }`}</pre>
     /* ------------------------------------------------------------ benchmarks */
     function Benchmarks({ meta, lastLatency }) {
       const rows = meta ? [
+        [`Test accuracy (held-out, ${meta.accuracy.test_correct}/${meta.accuracy.test_total})`, `${pct(meta.accuracy.test)} · 95% CI ${ciText(meta.accuracy.test_ci95)}`],
         ["Validation accuracy", pct(meta.accuracy.val)],
         ["Train accuracy", pct(meta.accuracy.train)],
         ["Parameters", meta.params.toLocaleString()],
         ["Training set", `${meta.dataset.train_images} images`],
-        ["Validation set", `${meta.dataset.val_images} images`],
+        ["Test set", `${meta.dataset.test_images} images`],
         ["Measured latency", lastLatency ? `${lastLatency} ms` : "run an analysis"],
         ["Inference device", meta.inference_device?.toUpperCase()],
       ] : [];

@@ -8,13 +8,22 @@
   ],
   "device": "mps",
   "dataset": {
-    "train_images": 434,
-    "val_images": 76,
-    "source": "nikibout/fresh-and-rotten-fruit (Hugging Face)"
+    "train_images": 212,
+    "val_images": 44,
+    "test_images": 44,
+    "source": "nikibout/fresh-and-rotten-fruit (Hugging Face)",
+    "note": "300 unique banana images after de-duplication; leak-free group-aware 70/15/15 train/val/test split."
   },
   "accuracy": {
-    "train": 0.9954,
-    "val": 1.0
+    "test": 0.9773,
+    "test_correct": 43,
+    "test_total": 44,
+    "test_ci95": [
+      0.8819,
+      0.996
+    ],
+    "val": 1.0,
+    "train": 1.0
   },
   "layers": [
     "Conv(3\u219216) + BN + ReLU + MaxPool",

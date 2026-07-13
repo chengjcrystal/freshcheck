@@ -5,7 +5,7 @@ same fruit with dark-brown decay blotches.
 This is only for verifying the pipeline and demoing the app. For real accuracy,
 replace data/ with actual fruit photos (see README -> "Use real data").
 
-    python make_sample_data.py            # 300 train + 60 val per class
+    python make_sample_data.py            # 300 train + 60 val + 60 test per class
 """
 
 import argparse
@@ -54,14 +54,16 @@ def main():
     ap.add_argument("--root", default="data")
     ap.add_argument("--train", type=int, default=300)
     ap.add_argument("--val", type=int, default=60)
+    ap.add_argument("--test", type=int, default=60)
     args = ap.parse_args()
 
     rng = random.Random(0)
     np.random.seed(0)
     _make_split(args.root, "train", args.train, rng)
     _make_split(args.root, "val", args.val, rng)
+    _make_split(args.root, "test", args.test, rng)
     print(f"Wrote synthetic data to {args.root}/ "
-          f"({args.train} train + {args.val} val per class)")
+          f"({args.train} train + {args.val} val + {args.test} test per class)")
 
 
 if __name__ == "__main__":

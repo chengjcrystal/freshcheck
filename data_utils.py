@@ -32,7 +32,12 @@ def eval_transform(img_size=IMG_SIZE):
 
 
 def make_loaders(data_dir, batch_size=32, img_size=IMG_SIZE):
-    """Build train/val DataLoaders from `data_dir/{train,val}/<class>/*.jpg`."""
+    """Build train/val DataLoaders from `data_dir/{train,val}/<class>/*.jpg`.
+
+    Only train and val are returned here: train fits the weights, val selects
+    the best checkpoint. The held-out test split lives in `data_dir/test` and is
+    read separately by evaluate.py so it never influences training.
+    """
     train_ds = datasets.ImageFolder(f"{data_dir}/train", transform=train_transform(img_size))
     val_ds = datasets.ImageFolder(f"{data_dir}/val", transform=eval_transform(img_size))
 
