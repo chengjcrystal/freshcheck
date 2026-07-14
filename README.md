@@ -10,16 +10,16 @@
 
 A ~24K-parameter CNN, trained in PyTorch, exported to ONNX, and run entirely client-side with WebAssembly.
 
-[Live demo](https://freshcheckfruit.vercel.app/) · [How it works](#how-it-works) · [Honest numbers](#honest-numbers) · [Run it](#run-it)
+[Live Demo](https://freshcheckfruit.vercel.app/) · [How It Works](#how-it-works) · [Honest Numbers](#honest-numbers) · [Run It](#run-it)
 
 </div>
 
 ---
 
-> [!NOTE]
+> [!TIP]
 > **The 30-second version (no code required).** Point your phone at a banana and FreshCheck tells you whether it is still good to eat, along with how sure it is. The part engineers care about: the AI model runs *inside the web page itself*, so your photo is never uploaded, there is no server to run or pay for, and the answer comes back instantly. I trained the model, caught and fixed a data problem that was faking a perfect score, then proved it on photos it had never seen and shipped it as a plain static site.
 
-## See it work
+## See It Work
 
 Drop in a photo (or use one of the built-in examples) and the model runs on the spot: a verdict, a confidence gauge, per-class probabilities, and latency, all computed client-side.
 
@@ -34,7 +34,7 @@ Drop in a photo (or use one of the built-in examples) and the model runs on the 
 - **Tiny on purpose.** `TinyFreshNet` is a ~24K-parameter CNN: trains in a few minutes on a laptop, a ~112 KB model file, ~14 ms per prediction.
 - **Designed, not templated.** Hand-built HTML/CSS/vanilla JS UI: drag-and-drop and camera capture, confidence gauge, probability bars, a four-level verdict, batch mode, copy-JSON and downloadable report, shareable links, dark mode.
 
-## Run it
+## Run It
 
 The `web/` directory is a zero-build static site. To preview the deployed experience:
 
@@ -46,7 +46,7 @@ python -m http.server -d web 8000   # open http://localhost:8000
 That is the whole demo. It loads only `onnxruntime-web` from a CDN plus two web fonts; everything else is inline, so there is no `npm install`.
 
 <details>
-<summary><b>Train it yourself</b> (real banana data, no login)</summary>
+<summary><b>Train It Yourself</b> (real banana data, no login)</summary>
 
 The shipped model trains on real banana photos from the Hugging Face dataset [`nikibout/fresh-and-rotten-fruit`](https://huggingface.co/datasets/nikibout/fresh-and-rotten-fruit) (~120 MB, no auth).
 
@@ -86,7 +86,7 @@ Endpoints: `GET /api/meta` (architecture, params, dataset sizes, measured accura
 
 </details>
 
-## Honest numbers
+## Honest Numbers
 
 Held-out test set, 44 images the model never saw during training:
 
@@ -102,17 +102,17 @@ The set is small (n=44), so the interval is wide, and this is a number for *bana
 
 > Banana-only because local disk was tight (~1.3 GB free) for the full ~9 GB multi-fruit set. To go multi-fruit, free up disk and use `Densu341/Fresh-rotten-fruit` on Hugging Face, or the Kaggle route above.
 
-## How it works
+## How It Works
 
 1. A photo is resized to 64x64 and normalized.
 2. Three small conv blocks (`3→16→32→64`, each with BatchNorm, ReLU, MaxPool) pull out features; a global-average-pooled linear head outputs `fresh` vs `rotten` logits.
 3. Training uses augmentation (flips, rotation, color jitter) so the tiny net generalizes. The best-validation checkpoint is saved to `checkpoints/freshnet.pt`.
 4. At inference, logits go through softmax and the top class plus its confidence becomes one of four plain verdicts: fresh, still ok, going off, rotten.
 
-## What's in the repo
+## What's In The Repo
 
 <details>
-<summary>File map</summary>
+<summary>File Map</summary>
 
 | File | What it does |
 |---|---|
