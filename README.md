@@ -8,17 +8,7 @@
 
 **Snap a banana, get a fresh-or-rotten call in the browser. The photo never leaves your device.**
 
-[![Live demo](https://img.shields.io/badge/live%20demo-freshcheckfruit.vercel.app-171610?style=for-the-badge&labelColor=C6FF00)](https://freshcheckfruit.vercel.app/)
-
-[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![ONNX Runtime Web](https://img.shields.io/badge/ONNX%20Runtime%20Web-005CED?style=flat-square&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
-[![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?style=flat-square&logo=webassembly&logoColor=white)](https://webassembly.org/)
-[![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Vanilla JS](https://img.shields.io/badge/Vanilla%20JS-F7DF1E?style=flat-square&logo=javascript&logoColor=171610)](https://developer.mozilla.org/docs/Web/JavaScript)
-
-![Held-out accuracy 97.7%](https://img.shields.io/badge/held--out%20accuracy-97.7%25-C6FF00?style=flat-square&labelColor=171610)
-![Parameters 23.9K](https://img.shields.io/badge/parameters-23.9K-FBF5E6?style=flat-square&labelColor=171610)
-![Photos uploaded 0](https://img.shields.io/badge/photos%20uploaded-0-FF4E2B?style=flat-square&labelColor=171610)
+A ~24K-parameter CNN, trained in PyTorch, exported to ONNX, and run entirely client-side with WebAssembly.
 
 [Live demo](https://freshcheckfruit.vercel.app/) · [How it works](#how-it-works) · [Honest numbers](#honest-numbers) · [Run it](#run-it)
 
@@ -34,13 +24,7 @@
 Drop in a photo (or use one of the built-in examples) and the model runs on the spot: a verdict, a confidence gauge, per-class probabilities, and latency, all computed client-side.
 
 <div align="center">
-  <img src=".github/assets/analyzer-result.png" alt="FreshCheck analyzing a photo: FRESH verdict at 100% confidence, probability bars, 13.8 ms latency running on WASM" width="880">
-</div>
-
-Ships with a dark theme too, toggled from the header:
-
-<div align="center">
-  <img src=".github/assets/hero-dark.png" alt="FreshCheck in dark mode" width="620">
+  <img src=".github/assets/analyzer-result.png" alt="FreshCheck analyzing a photo: FRESH verdict at 100% confidence, probability bars, 13.4 ms latency running on WASM" width="880">
 </div>
 
 ## Highlights
