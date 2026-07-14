@@ -1,6 +1,6 @@
 """FreshCheck API + static host.
 
-FastAPI backend that runs the trained TinyFreshNet model and serves the React
+FastAPI backend that runs the trained TinyFreshNet model and serves the static
 single-page app. One origin, no build step required for the frontend.
 
     python server.py            # serves http://127.0.0.1:8000

@@ -13,7 +13,6 @@ reported for context (val is the checkpoint-selection set, so it reads high).
 
 import json
 import math
-import os
 
 import torch
 from torchvision import datasets

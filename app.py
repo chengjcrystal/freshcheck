@@ -1,4 +1,4 @@
-"""FreshCheck — fruit freshness tester web app.
+"""FreshCheck: fruit freshness tester web app.
 
 A clean, product-style Gradio site. Upload a fruit photo and a small fine-tuned
 CNN reports whether it's fresh or spoiled, with a confidence score.
@@ -149,7 +149,7 @@ HERO = """
   <span class="pill">AI-powered freshness analysis</span>
   <h1>Is your fruit still <span class="hl">fresh</span>?</h1>
   <p>Upload a photo and our on-device model tells you in seconds whether it's
-     good to eat or past its prime — no account, no cloud upload.</p>
+     good to eat or past its prime, no account, no cloud upload.</p>
 </div>
 """
 
@@ -167,7 +167,7 @@ STEPS = [
 ]
 
 # ------------------------------------------------------------------ layout ----
-with gr.Blocks(title="FreshCheck — Fruit Freshness Tester") as demo:
+with gr.Blocks(title="FreshCheck: Fruit Freshness Tester") as demo:
     gr.HTML(NAV)
     gr.HTML(HERO)
 

@@ -37,5 +37,5 @@ class FreshnessClassifier:
     def _verdict(label, confidence):
         pct = f"{confidence * 100:.1f}%"
         if "rotten" in label.lower() or "bad" in label.lower():
-            return f"🤢 Gone bad — looks ROTTEN ({pct} confident)"
+            return f"🤢 Gone bad, looks ROTTEN ({pct} confident)"
         return f"✅ Looks FRESH ({pct} confident)"

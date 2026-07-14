@@ -1,4 +1,4 @@
-"""TinyFreshNet — a small convolutional net for fruit freshness.
+"""TinyFreshNet: a small convolutional net for fruit freshness.
 
 Deliberately tiny (~25k trainable parameters) so it trains in minutes on a
 CPU. This is the "small fine-tuned parameters" core of the project.
