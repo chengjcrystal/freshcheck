@@ -1,167 +1,149 @@
-# FreshCheck
+<div align="center">
 
-Is that banana still good? Take a photo and a small neural network calls it
-fresh or rotten, right in your browser. Nothing gets uploaded. The picture never
-leaves your device.
+<a href="https://freshcheckfruit.vercel.app/">
+  <img src=".github/assets/hero-light.png" alt="FreshCheck: is that banana still good?" width="880">
+</a>
 
-The model (`TinyFreshNet`) is a deliberately tiny convolutional net, about
-**24,000 parameters**, so it trains in a few minutes on a laptop CPU and answers
-the moment you drop a photo in.
+<h1>FreshCheck</h1>
 
-## Live demo (in-browser, no backend)
+**Snap a banana, get a fresh-or-rotten call in the browser. The photo never leaves your device.**
 
-The deployed app is a static page that runs the model **entirely in your
-browser** with `onnxruntime-web` (WebAssembly). It's trained in PyTorch,
-exported to ONNX, and shipped as a plain asset, so there's no server, no cold
-starts, and no upload.
+[![Live demo](https://img.shields.io/badge/live%20demo-freshcheckfruit.vercel.app-171610?style=for-the-badge&labelColor=C6FF00)](https://freshcheckfruit.vercel.app/)
+
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![ONNX Runtime Web](https://img.shields.io/badge/ONNX%20Runtime%20Web-005CED?style=flat-square&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?style=flat-square&logo=webassembly&logoColor=white)](https://webassembly.org/)
+[![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Vanilla JS](https://img.shields.io/badge/Vanilla%20JS-F7DF1E?style=flat-square&logo=javascript&logoColor=171610)](https://developer.mozilla.org/docs/Web/JavaScript)
+
+![Held-out accuracy 97.7%](https://img.shields.io/badge/held--out%20accuracy-97.7%25-C6FF00?style=flat-square&labelColor=171610)
+![Parameters 23.9K](https://img.shields.io/badge/parameters-23.9K-FBF5E6?style=flat-square&labelColor=171610)
+![Photos uploaded 0](https://img.shields.io/badge/photos%20uploaded-0-FF4E2B?style=flat-square&labelColor=171610)
+
+[Live demo](https://freshcheckfruit.vercel.app/) · [How it works](#how-it-works) · [Honest numbers](#honest-numbers) · [Run it](#run-it)
+
+</div>
+
+---
+
+> [!NOTE]
+> **The 30-second version (no code required).** Point your phone at a banana and FreshCheck tells you whether it is still good to eat, along with how sure it is. The part engineers care about: the AI model runs *inside the web page itself*, so your photo is never uploaded, there is no server to run or pay for, and the answer comes back instantly. I trained the model, caught and fixed a data problem that was faking a perfect score, then proved it on photos it had never seen and shipped it as a plain static site.
+
+## See it work
+
+Drop in a photo (or use one of the built-in examples) and the model runs on the spot: a verdict, a confidence gauge, per-class probabilities, and latency, all computed client-side.
+
+<div align="center">
+  <img src=".github/assets/analyzer-result.png" alt="FreshCheck analyzing a photo: FRESH verdict at 100% confidence, probability bars, 13.8 ms latency running on WASM" width="880">
+</div>
+
+Ships with a dark theme too, toggled from the header:
+
+<div align="center">
+  <img src=".github/assets/hero-dark.png" alt="FreshCheck in dark mode" width="620">
+</div>
+
+## Highlights
+
+- **In-browser inference, zero backend.** A PyTorch model exported to ONNX and run client-side with `onnxruntime-web` (WebAssembly). No upload, no server, no cold start. "Photos uploaded" is genuinely 0.
+- **Honest evaluation over a vanity metric.** The source dataset's train and test folders were byte-for-byte duplicates, which had produced a fake "100% validation accuracy." I de-duplicate by content hash, group near-identical frames with a perceptual hash, and build a seeded, group-aware 70/15/15 split so no look-alike leaks across it. Results come with a Wilson confidence interval, not just one number.
+- **Tiny on purpose.** `TinyFreshNet` is a ~24K-parameter CNN: trains in a few minutes on a laptop, a ~112 KB model file, ~14 ms per prediction.
+- **Designed, not templated.** Hand-built HTML/CSS/vanilla JS UI: drag-and-drop and camera capture, confidence gauge, probability bars, a four-level verdict, batch mode, copy-JSON and downloadable report, shareable links, dark mode.
+
+## Run it
+
+The `web/` directory is a zero-build static site. To preview the deployed experience:
 
 ```bash
-python export_onnx.py                 # writes web/model.onnx + web/meta.json from the checkpoint
-python -m http.server -d web 8000     # preview at http://localhost:8000
+python export_onnx.py               # writes web/model.onnx + web/meta.json from the checkpoint
+python -m http.server -d web 8000   # open http://localhost:8000
 ```
 
-### Deploy to Vercel
+That is the whole demo. It loads only `onnxruntime-web` from a CDN plus two web fonts; everything else is inline, so there is no `npm install`.
 
-The `web/` directory is a zero-build static site.
+<details>
+<summary><b>Train it yourself</b> (real banana data, no login)</summary>
 
-1. Push this repo to GitHub.
-2. In Vercel: **Add New, Project, Import** this repo.
-3. Set **Root Directory = `web`**, Framework Preset = **Other**, leave the build
-   command empty.
-4. **Deploy.** Every push to `main` redeploys on its own.
+The shipped model trains on real banana photos from the Hugging Face dataset [`nikibout/fresh-and-rotten-fruit`](https://huggingface.co/datasets/nikibout/fresh-and-rotten-fruit) (~120 MB, no auth).
 
-(The `server.py` FastAPI backend is still here for local or server use, but the
-deployed demo needs none of it.)
+```bash
+pip install -r requirements.txt
+python prepare_hf_banana.py         # downloads + lays out data/{train,val,test}/{fresh,rotten}
+python train.py --data-dir data --epochs 40
+python evaluate.py                  # writes metrics.json (held-out test accuracy)
+python export_onnx.py               # refresh the ONNX asset for the web app
+```
 
-## What's in here
+`train.py` applies inverse-frequency class weights and keeps the checkpoint with the best validation accuracy. The test split is never touched during training.
+
+</details>
+
+<details>
+<summary><b>Other data sources and the optional server</b></summary>
+
+**Kaggle multi-fruit.** Download [Fruits fresh and rotten for classification](https://www.kaggle.com/datasets/sriramr/fruits-fresh-and-rotten-for-classification), then:
+
+```bash
+python prepare_real_data.py --src /path/to/unzipped/dataset --dst data
+python train.py --data-dir data --epochs 20
+```
+
+You can also drop your own photos into `data/{train,val,test}/{fresh,rotten}/`.
+
+**Optional FastAPI server.** The deployed demo needs no backend, but `server.py` is included if you would rather run inference on a machine:
+
+```bash
+python server.py   # http://127.0.0.1:8000
+```
+
+Endpoints: `GET /api/meta` (architecture, params, dataset sizes, measured accuracy), `POST /api/predict` (image to class, confidence, probabilities, latency), `GET /api/examples`. There is also a minimal Gradio UI in `app.py`.
+
+**Deploy to Vercel.** Import the repo, set **Root Directory = `web`**, framework preset **Other**, empty build command. Every push to `main` redeploys.
+
+</details>
+
+## Honest numbers
+
+Held-out test set, 44 images the model never saw during training:
+
+| Metric | Value |
+|---|---|
+| Test accuracy | **97.7%** (43 / 44) |
+| 95% Wilson CI | 88.2% to 99.6% |
+| Parameters | 23,938 |
+| Model file | ~112 KB (ONNX) |
+| Inference | ~14 ms (WebAssembly) |
+
+The set is small (n=44), so the interval is wide, and this is a number for *bananas*, not a promise about every fruit. The earlier "100% validation accuracy" came from exact-duplicate leakage across the old split and is gone. The real point of the project is the leak-free pipeline and the in-browser deployment, both of which carry over to bigger datasets.
+
+> Banana-only because local disk was tight (~1.3 GB free) for the full ~9 GB multi-fruit set. To go multi-fruit, free up disk and use `Densu341/Fresh-rotten-fruit` on Hugging Face, or the Kaggle route above.
+
+## How it works
+
+1. A photo is resized to 64x64 and normalized.
+2. Three small conv blocks (`3→16→32→64`, each with BatchNorm, ReLU, MaxPool) pull out features; a global-average-pooled linear head outputs `fresh` vs `rotten` logits.
+3. Training uses augmentation (flips, rotation, color jitter) so the tiny net generalizes. The best-validation checkpoint is saved to `checkpoints/freshnet.pt`.
+4. At inference, logits go through softmax and the top class plus its confidence becomes one of four plain verdicts: fresh, still ok, going off, rotten.
+
+## What's in the repo
+
+<details>
+<summary>File map</summary>
 
 | File | What it does |
-|------|--------------|
-| `model.py` | The small CNN (`TinyFreshNet`) |
+|---|---|
+| `model.py` | The CNN (`TinyFreshNet`) |
 | `data_utils.py` | Image transforms and dataset loaders |
 | `train.py` | Train the model, save a checkpoint |
-| `evaluate.py` | Measure honest train/val/test accuracy, write `metrics.json` |
+| `evaluate.py` | Honest train/val/test accuracy, write `metrics.json` |
 | `inference.py` | Load the checkpoint, classify one image |
 | `predict.py` | CLI: `python predict.py fruit.jpg` |
-| `server.py` | FastAPI server (optional, for running inference on a machine) |
+| `export_onnx.py` | Export the checkpoint to ONNX for the web app |
+| `server.py` | Optional FastAPI inference server |
 | `app.py` | Gradio web app (drag-and-drop upload) |
 | `prepare_hf_banana.py` | Fetch and lay out the Hugging Face banana set |
 | `prepare_real_data.py` | Convert the Kaggle multi-fruit dataset into this layout |
 | `make_sample_data.py` | Synthetic data to test the pipeline end to end |
+| `web/index.html` | The static, in-browser app |
 
-## The web app
-
-The page is hand-written HTML, CSS, and vanilla JavaScript. No framework, no
-build step. It runs the model in the browser with **onnxruntime-web**, so it
-needs no backend. A **FastAPI** server is included if you'd rather run inference
-on a machine.
-
-```bash
-pip install -r requirements.txt
-python train.py --data-dir data --epochs 40   # only if checkpoints/freshnet.pt is missing
-python evaluate.py                             # writes metrics.json (honest held-out test accuracy)
-python server.py                               # serves http://127.0.0.1:8000
-```
-
-Open **http://127.0.0.1:8000**. Endpoints:
-- `GET /api/meta`: architecture, params, dataset sizes, measured train/val/test accuracy, device
-- `POST /api/predict`: image to predicted class, confidence, full probabilities, latency, image metadata
-- `GET /api/examples`: sample test images
-
-The frontend (`web/index.html`) pulls in only **onnxruntime-web** from a CDN plus
-two web fonts. Everything else is inline, so there's no `npm install` and the
-page stays light. The look is a neo-brutalist produce-market style: thick ink
-borders, hard offset shadows, acid green on cream, oversized Archivo type, a
-price-burst accuracy sticker, and a paper-receipt stats panel. It does
-drag-and-drop and camera capture, example photos, a confidence gauge and
-probability bars, a four-level verdict (fresh, still ok, going off, rotten) that
-tracks how sure the model is, batch analysis, copy JSON, download report, a
-shareable link, dark mode, and the usual empty, loading, and error states.
-
-### Simpler Gradio version
-
-There's also a minimal Gradio UI:
-
-```bash
-python make_sample_data.py        # synthetic data, only if you have no real data
-python train.py --data-dir data --epochs 12
-python app.py                     # opens the Gradio web app
-```
-
-`make_sample_data.py` draws **synthetic** fruit (bright = fresh, brown blotches =
-rotten). It proves the pipeline runs and lets you play with the app, but it won't
-judge real photos well. For that, use real data.
-
-## Real data: the banana set (already wired in, no auth)
-
-The shipped model is trained on **real banana photos** from the Hugging Face
-dataset `nikibout/fresh-and-rotten-fruit` (~120 MB, no login). To refetch and
-retrain:
-
-```bash
-python prepare_hf_banana.py          # downloads + lays out data/{train,val,test}/{fresh,rotten}
-python train.py --data-dir data --epochs 40
-python evaluate.py                   # reports held-out TEST accuracy
-python app.py
-```
-
-`prepare_hf_banana.py` maps `freshbanana` to `fresh` and `rottenbanana` to
-`rotten`, then builds a leak-free split. Here's the catch worth knowing about:
-the source's Train and Test folders overlap completely. Every Train image is a
-byte-for-byte copy of a Test image, so the raw ~510 files collapse to **300
-unique images** (150 fresh, 150 rotten). The script de-duplicates by content
-hash, groups near-identical frames of the same banana with a perceptual hash,
-and does a seeded, stratified, group-aware **70/15/15** split so no look-alike
-frame straddles the boundary. `train.py` applies inverse-frequency class weights
-and picks the checkpoint on validation accuracy. The test split is never touched
-during training.
-
-Honest result on the held-out test set (44 images the model never saw):
-**97.7% accuracy (43/44), 95% Wilson CI 88.2% to 99.6%**. That set is small
-(n=44), so the interval is wide. The old "100% validation accuracy" came from
-exact-duplicate leakage across the previous train/val split and is gone. The
-number is real for bananas on a small set, not a promise about every fruit. The
-point of the project is the leak-free pipeline and the in-browser deployment,
-which carry over to bigger datasets.
-
-> Banana-only because local disk was too tight (~1.3 GB free) for the full ~9 GB
-> multi-fruit set. To go multi-fruit (apples, oranges, and so on), free up disk
-> and use `Densu341/Fresh-rotten-fruit` on Hugging Face, or the Kaggle route
-> below.
-
-## Use other real data (Kaggle multi-fruit)
-
-1. Download the Kaggle dataset
-   [Fruits fresh and rotten for classification](https://www.kaggle.com/datasets/sriramr/fruits-fresh-and-rotten-for-classification)
-   and unzip it.
-2. Convert it to the binary fresh/rotten layout:
-   ```bash
-   python prepare_real_data.py --src /path/to/unzipped/dataset --dst data
-   ```
-3. Train and launch:
-   ```bash
-   python train.py --data-dir data --epochs 20
-   python app.py
-   ```
-
-You can also just drop your own photos into:
-
-```
-data/train/fresh/*.jpg
-data/train/rotten/*.jpg
-data/val/fresh/*.jpg
-data/val/rotten/*.jpg
-data/test/fresh/*.jpg
-data/test/rotten/*.jpg
-```
-
-## How it works
-
-- Photos get resized to 64x64 and normalized.
-- Three small conv blocks pull out features; a global-average-pooled linear head
-  outputs `fresh` vs `rotten` logits.
-- Training uses augmentation (flips, rotation, color jitter) so the tiny net
-  generalizes. The best validation checkpoint is saved to
-  `checkpoints/freshnet.pt`.
-- At inference the logits go through softmax, and the top class plus its
-  confidence becomes one of four plain verdicts.
+</details>
