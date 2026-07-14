@@ -315,6 +315,9 @@
     footer.foot .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; }
     footer.foot .brand .mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--acid); color: #171610; border: 2px solid var(--acid); transform: rotate(-4deg); }
     footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
+    footer.foot .foot-links { display: flex; gap: 20px; align-items: center; font-weight: 700; font-size: 14px; }
+    footer.foot .foot-links a { padding: 2px 0; }
+    footer.foot .foot-links a:hover { box-shadow: inset 0 -8px 0 var(--acid); }
 
     /* ---------------------------------------------------------- responsive */
     @media (max-width: 900px) {
@@ -528,6 +531,9 @@ softmax -> { class, confidence, timing }</pre>
   <footer class="foot">
     <div class="wrap fin">
       <div class="brand"><span class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#171610" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 6"/></svg></span> FreshCheck</div>
+      <div class="foot-links">
+        <a href="https://github.com/chengjcrystal/freshcheck" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
       <div class="stk">TinyFreshNet · PyTorch · ONNX · onnxruntime-web</div>
     </div>
   </footer>
