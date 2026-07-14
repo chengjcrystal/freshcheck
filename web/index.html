@@ -316,7 +316,8 @@
     footer.foot .brand .mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--acid); color: #171610; border: 2px solid var(--acid); transform: rotate(-4deg); }
     footer.foot .stk { font-family: "Space Mono", monospace; font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
     footer.foot .foot-links { display: flex; gap: 20px; align-items: center; font-weight: 700; font-size: 14px; }
-    footer.foot .foot-links a { padding: 2px 0; }
+    footer.foot .foot-links a { display: inline-flex; align-items: center; gap: 8px; padding: 2px 0; }
+    footer.foot .foot-links a svg { display: block; }
     footer.foot .foot-links a:hover { box-shadow: inset 0 -8px 0 var(--acid); }
 
     /* ---------------------------------------------------------- responsive */
@@ -531,9 +532,8 @@ softmax -> { class, confidence, timing }</pre>
   <footer class="foot">
     <div class="wrap fin">
       <div class="brand"><span class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#171610" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 6"/></svg></span> FreshCheck</div>
-      <div class="stk">TinyFreshNet · PyTorch · ONNX · onnxruntime-web</div>
       <div class="foot-links">
-        <a href="https://github.com/chengjcrystal/freshcheck" target="_blank" rel="noopener">GitHub ↗</a>
+        <a href="https://github.com/chengjcrystal/freshcheck" target="_blank" rel="noopener" aria-label="View source on GitHub"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.87.12 3.17.77.84 1.24 1.91 1.24 3.22 0 4.62-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.82.58C20.57 22.3 24 17.79 24 12.5 24 5.87 18.63.5 12 .5z"/></svg> GitHub</a>
       </div>
     </div>
   </footer>
