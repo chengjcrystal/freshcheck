@@ -126,3 +126,7 @@ The set is small (n=44), so the interval is wide, and this is a number for *bana
 | `prepare_real_data.py` | Convert the Kaggle multi-fruit dataset into this layout |
 | `make_sample_data.py` | Synthetic data to test the pipeline end to end |
 | `web/index.html` | The static, in-browser app |
+
+## License
+
+MIT. See [LICENSE](LICENSE).
