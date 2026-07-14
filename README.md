@@ -16,8 +16,8 @@ A ~24K-parameter CNN, trained in PyTorch, exported to ONNX, and run entirely cli
 
 ---
 
-> [!TIP]
-> **The 30-second version (no code required).** Point your phone at a banana and FreshCheck tells you whether it is still good to eat, along with how sure it is. The part engineers care about: the AI model runs *inside the web page itself*, so your photo is never uploaded, there is no server to run or pay for, and the answer comes back instantly. I trained the model, caught and fixed a data problem that was faking a perfect score, then proved it on photos it had never seen and shipped it as a plain static site.
+> [!NOTE]
+> **In plain English, no code required.** Point your phone at a banana and FreshCheck tells you whether it is still good to eat, along with how sure it is. The part engineers care about: the AI model runs *inside the web page itself*, so your photo is never uploaded, there is no server to run or pay for, and the answer comes back instantly. I trained the model, caught and fixed a data problem that was faking a perfect score, then proved it on photos it had never seen and shipped it as a plain static site.
 
 ## See It Work
 
@@ -111,9 +111,6 @@ The set is small (n=44), so the interval is wide, and this is a number for *bana
 
 ## What's In The Repo
 
-<details>
-<summary>File Map</summary>
-
 | File | What it does |
 |---|---|
 | `model.py` | The CNN (`TinyFreshNet`) |
@@ -129,5 +126,3 @@ The set is small (n=44), so the interval is wide, and this is a number for *bana
 | `prepare_real_data.py` | Convert the Kaggle multi-fruit dataset into this layout |
 | `make_sample_data.py` | Synthetic data to test the pipeline end to end |
 | `web/index.html` | The static, in-browser app |
-
-</details>
